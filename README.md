@@ -1,38 +1,45 @@
 # AI Ethics Compliance Agent
 
-A LangGraph-based compliance scanner for mixed repositories, documents, and datasets. The system reviews files, validates referenced data sources, queries an internal ethics knowledge base, and writes per-file plus consolidated reports under `compliance-analysis/`.
+The project is now a VS Code-first AI ethics reviewer. A TypeScript extension watches the active editor, waits 5 seconds after the last change, and calls a Python LangGraph backend over MCP stdio. Findings are surfaced as native VS Code diagnostics and each completed scan writes a Markdown report under `compliance-analysis/`.
 
 ## Prerequisites
 
 - Python 3.10+
+- Node.js 20+
 - `knowledge/ai_ethics_knowledge_base.pdf`
 - Optional provider keys in `.env`
 
-## Setup
+## Python Setup
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env
+python scripts/ingest_knowledge_base.py
 ```
 
-## Run
+## Extension Setup
 
 ```bash
-streamlit run app.py
+cd vscode-extension
+npm install
+npm run compile
 ```
 
-The UI lets you:
+Then open `vscode-extension/` in VS Code and press `F5` with the `Run AI Ethics Extension` launch config. Use the repo venv for `aiEthics.pythonPath`. `aiEthics.serverPath` can stay empty when the workspace is the repo root or `vscode-extension/`.
 
-- choose the configured LLM provider/model
-- start or resume a scan from LangGraph checkpoints
-- inspect live scan progress and logs
-- rebuild/query the RAG knowledge base
-- view and download the final Markdown or HTML report
+Detailed extension run and test instructions are in `vscode-extension/README.md`.
+
+## Manual Verification
+
+```bash
+python scripts/verify_demo_scan.py
+python mcp_server.py
+```
 
 ## Notes
 
-- The implementation keeps your configured default provider/model intact.
-- If an LLM or web-search dependency is unavailable, the scanner falls back to deterministic heuristics instead of failing the whole run.
-- Reports are written atomically to `compliance-analysis/` inside the scanned directory.
+- The Streamlit UI has been removed.
+- Reports are written atomically to `compliance-analysis/` near the workspace root that contains the checked file.
+- LangSmith tracing is optional and activates only when `LANGSMITH_API_KEY` is configured.

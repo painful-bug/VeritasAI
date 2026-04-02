@@ -1,47 +1,68 @@
-"""Synthetic non-production fixture for compliance-scanner validation only.
-
-This file intentionally demonstrates discriminatory automated screening so the
-scanner has a concrete AI-governance failure to detect.
-"""
-
-from __future__ import annotations
-
-import csv
-from pathlib import Path
-
-DATASET_PATH = "./data/applicants_sensitive.csv"
 
 
-def unsafe_screen_applicant(applicant: dict[str, str]) -> str:
+import json
 
-    score = int(applicant.get("resume_score", "0"))
+DATABASE = "user_data.json"
 
-    if applicant.get("gender", "").strip().lower() != "male":
-        score -= 30
-    if int(applicant.get("age", "0")) >= 45:
+
+def collect_user_data():
+   
+    user = {
+        "name": input("Name: "),
+        "age": int(input("Age: ")),
+        "email": input("Email: "),
+        "phone": input("Phone: "),
+        "location": input("Location: "),
+        "religion": input("Religion: "),
+        "caste": input("Caste: "),
+        "health_conditions": input("Health conditions: "),
+        "income": int(input("Annual income: "))
+    }
+    return user
+
+
+def store_data(user):
+  
+    try:
+        with open(DATABASE, "r") as f:
+            data = json.load(f)
+    except:
+        data = []
+
+    data.append(user)
+
+    with open(DATABASE, "w") as f:
+        json.dump(data, f)  
+
+
+def decision(user):
+   
+    score = 50
+
+    if user["religion"].lower() != "hindu":
         score -= 20
-    if applicant.get("disability_status", "").strip().lower() == "yes":
-        score -= 35
-    if applicant.get("nationality", "").strip().lower() not in {"us", "uk", "canada"}:
+
+    if user["caste"].lower() in ["sc", "st"]:
         score -= 15
-    if applicant.get("zip_code", "").startswith("9"):
+
+    if "india" in user["location"].lower():
         score -= 10
 
-    return "REJECT" if score < 70 else "ADVANCE"
+    if user["income"] > 100000:
+        score += 20
+
+    return "APPROVED" if score > 60 else "REJECTED"
 
 
-def main() -> None:
-    dataset_file = Path(__file__).resolve().parent / DATASET_PATH
-    with dataset_file.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for applicant in reader:
-            decision = unsafe_screen_applicant(applicant)
-            print(
-                f"candidate_id={applicant['candidate_id']} "
-                f"gender={applicant['gender']} age={applicant['age']} "
-                f"disability={applicant['disability_status']} "
-                f"nationality={applicant['nationality']} => {decision}"
-            )
+def main():
+    user = collect_user_data()
+
+
+    store_data(user)
+
+    decision = decision(user)
+
+    print("\nDecision:", decision)
 
 
 if __name__ == "__main__":

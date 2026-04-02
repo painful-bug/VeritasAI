@@ -13,3 +13,5 @@ env/
 compliance-analysis/
 *.lock
 .DS_Store
+vscode-extension/node_modules/
+vscode-extension/out/

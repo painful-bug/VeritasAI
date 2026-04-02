@@ -1,0 +1,86 @@
+{
+  "name": "ai-ethics-compliance-agent",
+  "displayName": "AI Ethics Compliance Agent",
+  "description": "Real-time AI ethics compliance diagnostics backed by a Python LangGraph MCP server.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Linters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiEthics.openProblems",
+        "title": "AI Ethics: Open Problems"
+      },
+      {
+        "command": "aiEthics.showOutput",
+        "title": "AI Ethics: Show Output"
+      }
+    ],
+    "configuration": {
+      "title": "AI Ethics",
+      "properties": {
+        "aiEthics.enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "aiEthics.provider": {
+          "type": "string",
+          "default": "ollama_cloud",
+          "enum": [
+            "ollama_cloud",
+            "openrouter",
+            "groq",
+            "ollama_local"
+          ]
+        },
+        "aiEthics.model": {
+          "type": "string",
+          "default": "glm4:cloud"
+        },
+        "aiEthics.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter that should run mcp_server.py."
+        },
+        "aiEthics.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to mcp_server.py. If empty, the extension looks in the workspace root and its parent directory."
+        },
+        "aiEthics.debounceMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Milliseconds to wait after the last document change before running the check."
+        },
+        "aiEthics.requestTimeoutMs": {
+          "type": "number",
+          "default": 300000,
+          "description": "Timeout for a single MCP compliance request in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.22.1",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/vscode": "^1.96.0",
+    "typescript": "^5.6.3"
+  }
+}

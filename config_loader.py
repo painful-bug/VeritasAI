@@ -8,55 +8,80 @@ import yaml
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
+        "default_provider": "ollama_cloud",
+        "default_model": "glm4:cloud",
         "max_retries": 3,
         "retry_backoff_jitter": True,
         "rate_limit_rps": 2,
         "rate_limit_burst": 10,
-    },
-    "scan": {
-        "max_parallel_agents": 4,
-        "max_concurrency": 4,
-        "max_file_size_mb": 10,
-        "output_dir": "compliance-analysis",
-        "excluded_extensions": [],
-        "excluded_dirs": [],
+        "providers": {
+            "ollama_cloud": {
+                "base_url": "https://cloud.ollama.com",
+                "models": ["glm4:cloud", "llama3.3:cloud", "qwen2.5:cloud"],
+            },
+            "openrouter": {
+                "base_url": "https://openrouter.ai/api/v1",
+                "models": [
+                    "anthropic/claude-3.5-sonnet",
+                    "openai/gpt-4o",
+                    "meta-llama/llama-3.3-70b-instruct",
+                ],
+            },
+            "groq": {
+                "models": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
+            },
+            "ollama_local": {
+                "base_url": "http://localhost:11434",
+                "models": [],
+            },
+        },
     },
     "rag": {
-        "persist_dir": ".chroma_db",
+        "knowledge_base_pdf": "knowledge/ai_ethics_knowledge_base.pdf",
+        "chroma_persist_dir": ".chroma_db",
         "collection_name": "ai_ethics_kb",
         "chunk_size": 800,
-        "chunk_overlap": 120,
+        "chunk_overlap": 100,
         "top_k": 5,
+        "embedding_model": "all-MiniLM-L6-v2",
     },
-    "review": {
-        "llm_inline_content_chars": 30000,
-        "llm_rag_query_count": 5,
-        "llm_rag_hits_per_query": 3,
+    "scan": {
+        "output_dir": "compliance-analysis",
+        "max_file_size_mb": 50,
     },
     "filesystem": {
         "write_lock_timeout_s": 30,
         "read_retry_attempts": 3,
         "read_retry_min_wait_s": 0.5,
         "read_retry_max_wait_s": 4.0,
-        "bash_timeout_s": 60,
-        "bash_max_command_length": 1000,
     },
     "checkpoint": {
         "backend": "sqlite",
         "sqlite_path": ".langgraph_checkpoints.db",
         "postgres_uri_env": "POSTGRES_URI",
     },
-    "web_search": {
-        "max_results": 3,
-        "retry_attempts": 3,
-        "fallback_provider": "duckduckgo",
-    },
     "langsmith": {
         "project": "ai-ethics-compliance-agent",
         "endpoint": "https://api.smith.langchain.com",
         "tracing_v2": True,
     },
+    "extension": {
+        "debounce_ms": 5000,
+    },
 }
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _resolve_path_like(value: Any, base_dir: Path) -> Any:
+    if not isinstance(value, str) or not value.strip():
+        return value
+    candidate = Path(value).expanduser()
+    if candidate.is_absolute():
+        return str(candidate.resolve())
+    return str((base_dir / candidate).resolve())
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
@@ -69,53 +94,81 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
-
 def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(config)
-
-    scan = normalized.setdefault("scan", {})
-    if "skip_extensions" in scan and "excluded_extensions" not in scan:
-        scan["excluded_extensions"] = scan["skip_extensions"]
-    if "excluded_extensions" in scan and "skip_extensions" not in scan:
-        scan["skip_extensions"] = scan["excluded_extensions"]
-    if "excluded_dirs" in scan and "skip_dirs" not in scan:
-        scan["skip_dirs"] = scan["excluded_dirs"]
 
     knowledge = normalized.get("knowledge", {})
     rag = normalized.setdefault("rag", {})
     rag.setdefault("knowledge_base_pdf", knowledge.get("pdf_path", "knowledge/ai_ethics_knowledge_base.pdf"))
-    rag.setdefault("persist_dir", rag.get("chroma_persist_dir", ".chroma_db"))
     rag.setdefault("chroma_persist_dir", rag.get("persist_dir", ".chroma_db"))
+    rag.setdefault("persist_dir", rag.get("chroma_persist_dir", ".chroma_db"))
     rag.setdefault("collection_name", "ai_ethics_kb")
-    rag.setdefault("embedder_provider", knowledge.get("embedder_provider", "ollama"))
-    rag.setdefault("embedder_model", knowledge.get("embedder_model", "nomic-embed-text:v1.5"))
     rag.setdefault("top_k", 5)
+    rag.setdefault("chunk_size", 800)
+    rag.setdefault("chunk_overlap", 100)
+    rag.setdefault("embedding_model", "all-MiniLM-L6-v2")
 
     llm = normalized.setdefault("llm", {})
+    llm.setdefault("default_provider", "ollama_cloud")
+    llm.setdefault("default_model", "glm4:cloud")
     providers = llm.setdefault("providers", {})
-    for provider_name, provider_config in providers.items():
-        if isinstance(provider_config, dict):
-            provider_config.setdefault("models", [])
-            if provider_name == "ollama_local":
-                provider_config.setdefault("base_url", "http://localhost:11434")
-            if provider_name == "ollama_cloud":
-                provider_config.setdefault("base_url", "https://cloud.ollama.com")
-            if provider_name == "openrouter":
-                provider_config.setdefault("base_url", "https://openrouter.ai/api/v1")
+    for provider_name in ("ollama_cloud", "openrouter", "groq", "ollama_local"):
+        providers.setdefault(provider_name, {})
+    providers["ollama_cloud"].setdefault("base_url", "https://cloud.ollama.com")
+    providers["ollama_cloud"].setdefault("models", ["glm4:cloud", "llama3.3:cloud", "qwen2.5:cloud"])
+    providers["openrouter"].setdefault("base_url", "https://openrouter.ai/api/v1")
+    providers["openrouter"].setdefault(
+        "models",
+        ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "meta-llama/llama-3.3-70b-instruct"],
+    )
+    providers["groq"].setdefault("models", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"])
+    providers["ollama_local"].setdefault("base_url", "http://localhost:11434")
+    providers["ollama_local"].setdefault("models", [])
+
+    scan = normalized.setdefault("scan", {})
+    scan.setdefault("output_dir", "compliance-analysis")
+    scan.setdefault("max_file_size_mb", 50)
+
+    extension = normalized.setdefault("extension", {})
+    extension.setdefault("debounce_ms", 5000)
 
     return normalized
 
 
+def _resolve_runtime_paths(config: dict[str, Any], base_dir: Path) -> dict[str, Any]:
+    resolved = deepcopy(config)
+
+    rag = resolved.setdefault("rag", {})
+    rag["knowledge_base_pdf"] = _resolve_path_like(
+        rag.get("knowledge_base_pdf", "knowledge/ai_ethics_knowledge_base.pdf"),
+        base_dir,
+    )
+    chroma_persist_dir = _resolve_path_like(rag.get("chroma_persist_dir", ".chroma_db"), base_dir)
+    rag["chroma_persist_dir"] = chroma_persist_dir
+    rag["persist_dir"] = _resolve_path_like(rag.get("persist_dir", chroma_persist_dir), base_dir)
+
+    checkpoint = resolved.setdefault("checkpoint", {})
+    checkpoint["sqlite_path"] = _resolve_path_like(checkpoint.get("sqlite_path", ".langgraph_checkpoints.db"), base_dir)
+
+    return resolved
+
 
 def load_config(path: str | Path = "config.yaml") -> dict[str, Any]:
-    config_path = Path(path)
+    config_path = Path(path).expanduser()
+    if not config_path.is_absolute():
+        config_path = (_repo_root() / config_path).resolve()
+
     if not config_path.exists():
-        return _normalize_aliases(deepcopy(DEFAULT_CONFIG))
+        return _resolve_runtime_paths(_normalize_aliases(DEFAULT_CONFIG), _repo_root())
+
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
-    merged = _deep_merge(DEFAULT_CONFIG, raw)
-    return _normalize_aliases(merged)
 
+    if not isinstance(raw, dict):
+        return _resolve_runtime_paths(_normalize_aliases(DEFAULT_CONFIG), config_path.parent)
+
+    merged = _deep_merge(DEFAULT_CONFIG, raw)
+    return _resolve_runtime_paths(_normalize_aliases(merged), config_path.parent)
 
 
 def save_config(config: dict[str, Any], path: str | Path = "config.yaml") -> None:
