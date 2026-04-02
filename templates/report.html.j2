@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Ethics Compliance Report</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: #fffaf0;
+      --ink: #18201b;
+      --muted: #5a675e;
+      --line: #d8cdbb;
+      --pass: #1f7a4d;
+      --warn: #b87512;
+      --fail: #b83a2f;
+      --accent: #254f45;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Iowan Old Style", "Times New Roman", serif;
+      background: radial-gradient(circle at top, #fefbf3 0%, var(--bg) 45%, #ece4d6 100%);
+      color: var(--ink);
+    }
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 32px 20px 64px;
+    }
+    header {
+      background: linear-gradient(135deg, rgba(37,79,69,0.98), rgba(24,32,27,0.96));
+      color: white;
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.14);
+    }
+    header h1 {
+      margin: 0 0 8px;
+      font-size: clamp(2rem, 5vw, 3rem);
+      letter-spacing: 0.02em;
+    }
+    header p { margin: 6px 0; color: rgba(255,255,255,0.85); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin: 24px 0;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.06);
+    }
+    h2 {
+      margin-top: 36px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+      font-size: 1.4rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.05);
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: rgba(37,79,69,0.08);
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .PASS { background: rgba(31,122,77,0.14); color: var(--pass); }
+    .WARN { background: rgba(184,117,18,0.14); color: var(--warn); }
+    .FAIL { background: rgba(184,58,47,0.14); color: var(--fail); }
+    .ERROR, .SKIPPED { background: rgba(90,103,94,0.12); color: var(--muted); }
+    .finding {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-left: 5px solid var(--accent);
+      border-radius: 18px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .muted { color: var(--muted); }
+    ul { padding-left: 18px; }
+    code { font-family: "SFMono-Regular", Consolas, monospace; }
+    @media (max-width: 700px) {
+      header, .card, table, .finding { border-radius: 16px; }
+      .page { padding: 20px 14px 44px; }
+      th, td { padding: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <p>AI Ethics Compliance Agent</p>
+      <h1>Final Compliance Report</h1>
+      <p>{{ executive_summary }}</p>
+      <p>Target directory: <code>{{ target_directory }}</code></p>
+      <p>Generated at: <code>{{ generated_at }}</code> | Provider: <code>{{ llm_provider }}</code> | Model: <code>{{ llm_model }}</code></p>
+    </header>
+
+    <div class="grid">
+      <div class="card"><strong>Total files</strong><div>{{ file_results|length }}</div></div>
+      <div class="card"><strong>PASS</strong><div>{{ status_counts.get('PASS', 0) }}</div></div>
+      <div class="card"><strong>WARN</strong><div>{{ status_counts.get('WARN', 0) }}</div></div>
+      <div class="card"><strong>FAIL</strong><div>{{ status_counts.get('FAIL', 0) }}</div></div>
+    </div>
+
+    <h2>Files Scanned</h2>
+    <table>
+      <thead>
+        <tr><th>File</th><th>Type</th><th>Status</th><th>Findings</th></tr>
+      </thead>
+      <tbody>
+        {% for result in file_results %}
+        <tr>
+          <td><code>{{ result.file_path }}</code></td>
+          <td>{{ result.file_type }}</td>
+          <td><span class="pill {{ result.status }}">{{ result.status }}</span></td>
+          <td>{{ result.findings|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2>Critical Findings</h2>
+    {% if critical_findings %}
+      {% for item in critical_findings %}
+      <div class="finding">
+        <strong>{{ item.finding.title }}</strong>
+        <div class="muted"><code>{{ item.file_path }}</code> · {{ item.finding.section_desc }} · {{ item.finding.severity }}</div>
+        <p>{{ item.finding.explanation }}</p>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="muted">No high-severity findings were identified in this scan.</p>
+    {% endif %}
+
+    <h2>Data Sources</h2>
+    {% if data_sources %}
+    <table>
+      <thead>
+        <tr><th>Source</th><th>Referenced In</th><th>Verdict</th><th>Concern</th></tr>
+      </thead>
+      <tbody>
+        {% for item in data_sources %}
+        <tr>
+          <td><code>{{ item.source.url_or_path }}</code></td>
+          <td><code>{{ item.file_path }}</code></td>
+          <td><span class="pill {{ item.source.verdict }}">{{ item.source.verdict }}</span></td>
+          <td>{{ (item.source.concerns|join('; ')) or item.source.description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="muted">No external or local data sources were identified during this scan.</p>
+    {% endif %}
+
+    <h2>Recommendations</h2>
+    {% if recommendations %}
+      <ol>
+        {% for recommendation in recommendations %}
+          <li><strong>{{ recommendation.severity }}</strong> <code>{{ recommendation.file_path }}</code>: {{ recommendation.text }}</li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="muted">No additional remediation roadmap was required for this scan.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

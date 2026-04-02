@@ -1,0 +1,5 @@
+candidate_id,gender,age,zip_code,disability_status,nationality,resume_score
+A-1001,female,52,94110,yes,brazil,88
+A-1002,male,29,10001,no,us,76
+A-1003,female,47,90210,no,india,91
+A-1004,non-binary,38,94107,yes,uk,84
