@@ -32,6 +32,10 @@
       {
         "command": "aiEthics.refreshDirectoryAnalysis",
         "title": "AI Ethics: Refresh Directory Analysis"
+      },
+      {
+        "command": "aiEthics.scanCurrentFile",
+        "title": "AI Ethics: Scan Current File"
       }
     ],
     "configuration": {

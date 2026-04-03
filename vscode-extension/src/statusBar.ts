@@ -22,7 +22,7 @@ export class StatusBarController implements vscode.Disposable {
   }
 
   setRunning(): void {
-    this.item.text = '$(sync~spin) AI Ethics: Analysing changed code…';
+    this.item.text = '$(sync~spin) AI Ethics: Analysing';
     this.item.tooltip = 'Analysing only the most recently changed code region.';
   }
 

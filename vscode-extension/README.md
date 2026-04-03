@@ -32,7 +32,7 @@ In the Extension Development Host, open Settings and set:
 - `AI Ethics: Provider` -> one of `ollama_cloud`, `openrouter`, `groq`, `ollama_local`
 - `AI Ethics: Model` -> a model valid for the selected provider
 
-If provider setup fails, the backend still falls back to deterministic analysis, so MCP connectivity can still be tested without a working LLM account.
+Provider setup now matters for supported-file reviews. If the backend cannot create the configured LLM client or the model fails to return valid review JSON, the scan result is surfaced as an explicit `ERROR`.
 
 ## End-to-End Test
 
@@ -45,6 +45,10 @@ If provider setup fails, the backend still falls back to deterministic analysis,
    - the Problems panel shows `AI Ethics` findings
    - red/yellow/blue diagnostics appear inline in the editor
    - `compliance-analysis/unsafe_hiring_screen_analysis_report.md` is written in the repo root
+
+## Manual Trigger
+
+Use the Command Palette and run `AI Ethics: Scan Current File` to trigger an immediate full-file compliance check for the active editor without waiting for the debounce timer.
 
 ## Troubleshooting
 

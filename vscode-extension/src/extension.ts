@@ -207,6 +207,15 @@ function buildSnippet(document: vscode.TextDocument, pendingWindow: PendingChang
   };
 }
 
+function buildFullDocumentWindow(document: vscode.TextDocument): PendingChangeWindow {
+  return {
+    startLine: 1,
+    endLine: Math.max(1, document.lineCount),
+    lastChangeAt: 0,
+    lineDelta: 0
+  };
+}
+
 function setDiagnostics(document: vscode.TextDocument, findings: Finding[]): void {
   const diagnostics = findings.map(finding => findingToDiagnostic(finding, document));
   diagnosticCollection.set(document.uri, diagnostics);
@@ -542,6 +551,38 @@ async function runComplianceCheck(document: vscode.TextDocument, pendingWindow: 
   }
 }
 
+async function triggerManualComplianceCheck(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    void vscode.window.showErrorMessage('AI Ethics could not find an active editor to scan.');
+    return;
+  }
+
+  const document = editor.document;
+  if (!isEnabled()) {
+    void vscode.window.showWarningMessage('AI Ethics scanning is disabled in settings.');
+    return;
+  }
+
+  if (!isSupportedDocument(document)) {
+    void vscode.window.showWarningMessage('AI Ethics can only scan supported code, document, and structured-data files.');
+    return;
+  }
+
+  const state = getDocumentState(document);
+  clearTimer(state);
+  state.pendingWindow = buildFullDocumentWindow(document);
+  outputChannel.appendLine(`Manually queued compliance check for ${document.fileName}`);
+
+  if (activeRun) {
+    statusBar.setRunning();
+    void vscode.window.showInformationMessage('AI Ethics queued a manual scan for the active file after the current run finishes.');
+    return;
+  }
+
+  await startReadyChecks();
+}
+
 async function startReadyChecks(): Promise<void> {
   if (activeRun || !isEnabled()) {
     return;
@@ -606,6 +647,9 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('aiEthics.refreshDirectoryAnalysis', async () => {
       await runDirectoryAnalysis(true);
+    }),
+    vscode.commands.registerCommand('aiEthics.scanCurrentFile', async () => {
+      await triggerManualComplianceCheck();
     }),
     vscode.workspace.onDidChangeTextDocument(handleDocumentChange),
     vscode.workspace.onDidCloseTextDocument(document => {
