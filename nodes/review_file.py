@@ -37,6 +37,29 @@ def _apply_line_offset(file_result: FileResult, line_offset: int) -> FileResult:
     return updated
 
 
+def _llm_required_error(
+    base_result: FileResult,
+    *,
+    provider: str,
+    model: str,
+    reason: str,
+) -> FileResult:
+    result = dict(base_result)
+    result["status"] = "ERROR"
+    result["summary"] = (
+        f"LLM compliance review could not be completed for {os.path.basename(base_result['file_path'])}. "
+        f"Reason: {reason}"
+    )
+    result["findings"] = []
+    result["error"] = (
+        f"provider={provider or 'unknown'} model={model or 'unknown'}: {reason}"
+    )
+    result["agentic_grade"] = None
+    result["retrieval_evidence"] = []
+    result["web_search_evidence"] = []
+    return result
+
+
 @traceable(name="review_file", tags=["compliance-scan", "file-review"])
 def review_file_node(state: ComplianceState, config: RunnableConfig) -> dict:
     file_path = state["file_path"]
@@ -58,27 +81,40 @@ def review_file_node(state: ComplianceState, config: RunnableConfig) -> dict:
         file_content=file_content,
     )
 
-    llm = None
-    if state["llm_provider"] not in {"", "deterministic"}:
-        llm = try_create_llm(state["llm_provider"], state["llm_model"], config=state["config"])
+    llm_enabled = bool(state.get("config", {}).get("agentic", {}).get("enabled", True))
 
-    if llm is not None and file_result["status"] != "SKIPPED":
-        llm_result = assess_file_with_llm(
-            llm=llm,
-            file_path=file_path,
-            file_content=file_content,
-            base_result=file_result,
-            query_rag=query_rag,
-            top_k=int(state["config"].get("rag", {}).get("top_k", 3)),
-            provider=state.get("llm_provider", ""),
-            model=state.get("llm_model", ""),
-            config=state.get("config", {}),
-            web_search_fn=web_search_tool,
-            reviewed_context=state.get("reviewed_context", []),
-            repository_context=state.get("agentic_context", ""),
-        )
-        if llm_result is not None:
-            file_result = llm_result
+    if file_result["status"] not in {"SKIPPED", "ERROR"}:
+        if not llm_enabled:
+            file_result = _llm_required_error(
+                file_result,
+                provider=state.get("llm_provider", ""),
+                model=state.get("llm_model", ""),
+                reason="LLM review is disabled in config",
+            )
+        else:
+            llm = try_create_llm(state["llm_provider"], state["llm_model"], config=state["config"])
+            if llm is None:
+                file_result = _llm_required_error(
+                    file_result,
+                    provider=state.get("llm_provider", ""),
+                    model=state.get("llm_model", ""),
+                    reason="LLM client could not be created",
+                )
+            else:
+                file_result = assess_file_with_llm(
+                    llm=llm,
+                    file_path=file_path,
+                    file_content=file_content,
+                    base_result=file_result,
+                    query_rag=query_rag,
+                    top_k=int(state["config"].get("rag", {}).get("top_k", 3)),
+                    provider=state.get("llm_provider", ""),
+                    model=state.get("llm_model", ""),
+                    config=state.get("config", {}),
+                    web_search_fn=web_search_tool,
+                    reviewed_context=state.get("reviewed_context", []),
+                    repository_context=state.get("agentic_context", ""),
+                )
 
     file_result = _apply_line_offset(file_result, line_offset)
 

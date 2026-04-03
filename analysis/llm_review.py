@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 from analysis.agentic_runtime import run_pydantic_agentic_review
 from models.state import FileResult, Finding
+from prompts.loader import load_prompt
 from rag.retriever import Retriever
 from utils.strings import extract_tagged_json
 
@@ -146,8 +147,8 @@ def _build_web_evidence(hits: list[dict[str, Any]], question: str) -> list[dict[
 def _build_review_question(file_path: str, base_result: FileResult) -> str:
     return (
         f"Assess AI ethics compliance risks in file {file_path}. "
-        f"Baseline status: {base_result['status']}. "
-        f"Baseline summary: {base_result['summary']}"
+        f"Prepared file summary: {base_result['summary']} "
+        f"Predicted real-world output: {base_result.get('predicted_output') or 'Unknown'}"
     )
 
 
@@ -177,7 +178,10 @@ def _supporting_context(
     reviewed_context: list[dict[str, Any]] | None,
     repository_context: str,
 ) -> str:
-    sections = [f"Current file baseline summary:\n{base_result['summary']}"]
+    sections = [f"Prepared file summary:\n{base_result['summary']}"]
+    predicted_output = str(base_result.get("predicted_output") or "").strip()
+    if predicted_output:
+        sections.append(f"Prepared predicted output:\n{predicted_output}")
     if reviewed_context:
         sections.append(f"Nearby reviewed context:\n{_compact_reviewed_context(reviewed_context)}")
     if repository_context.strip():
@@ -206,6 +210,7 @@ def _build_prompt(
     reviewed_context: list[dict[str, Any]] | None,
     repository_context: str,
 ) -> str:
+    system_prompt = load_prompt("file_reviewer").strip()
     rag_context = "\n\n".join(
         f"[{index}] chunk_id={hit.get('metadata', {}).get('chunk_id', 'n/a')} "
         f"page={hit.get('metadata', {}).get('page', 'n/a')} "
@@ -220,30 +225,15 @@ def _build_prompt(
     )
 
     return f"""
-You are an AI ethics compliance reviewer. Use the local RAG context first, then decide if web search is needed.
+SYSTEM INSTRUCTIONS
+{system_prompt}
 
-Return only JSON enclosed in <r>...</r> with EXACT keys:
-- Relevancy (0..1 float)
-- Faithfulness (0..1 float)
-- Context Quality (0..1 float)
-- Needs Web Search (boolean)
-- Explanation (string)
-- Answer (string)
-- status (PASS|WARN|FAIL|ERROR|SKIPPED)
-- summary (string)
-- findings (list)
-
-Each finding item keys:
-- severity (HIGH|MEDIUM|LOW)
-- start_line, end_line (ints)
-- regulation_name, jurisdiction, explanation, remedy
-- rag_chunk_id, rag_page
-
+REVIEW TASK
 Question: {question}
 File path: {file_path}
-Baseline status: {base_result['status']}
-Baseline summary: {base_result['summary']}
-Baseline findings: {base_result.get('findings', [])}
+Prepared file status: {base_result['status']}
+Prepared file summary: {base_result['summary']}
+Prepared predicted output: {base_result.get('predicted_output')}
 
 Supporting repository and nearby context:
 {_supporting_context(base_result=base_result, reviewed_context=reviewed_context, repository_context=repository_context)}
@@ -259,6 +249,32 @@ File content:
 {file_content}
 ```
 """.strip()
+
+
+def _llm_error_result(
+    *,
+    file_path: str,
+    base_result: FileResult,
+    reason: str,
+) -> FileResult:
+    result: FileResult = {
+        "file_path": file_path,
+        "file_type": str(base_result.get("file_type") or "unknown"),
+        "language": base_result.get("language"),
+        "status": "ERROR",
+        "summary": (
+            f"LLM compliance review could not be completed for {file_path}. "
+            f"Reason: {reason}"
+        ),
+        "predicted_output": base_result.get("predicted_output"),
+        "findings": [],
+        "report_path": None,
+        "error": reason,
+        "agentic_grade": None,
+        "retrieval_evidence": [],
+        "web_search_evidence": [],
+    }
+    return result
 
 
 def _map_payload_to_result(
@@ -330,7 +346,7 @@ def assess_file_with_llm(
     web_search_fn: WebSearchFn | None = None,
     reviewed_context: list[dict[str, Any]] | None = None,
     repository_context: str = "",
-) -> FileResult | None:
+) -> FileResult:
     effective_config = config or {}
     agentic_config = effective_config.get("agentic", {})
     thresholds = agentic_config.get("grade_thresholds", {}) or {}
@@ -388,12 +404,20 @@ def assess_file_with_llm(
     )
     try:
         response = llm.invoke(prompt)
-    except Exception:
-        return None
+    except Exception as exc:
+        return _llm_error_result(
+            file_path=file_path,
+            base_result=base_result,
+            reason=f"model invocation failed: {exc}",
+        )
 
     payload = extract_tagged_json(_response_text(response))
     if payload is None:
-        return None
+        return _llm_error_result(
+            file_path=file_path,
+            base_result=base_result,
+            reason="model response did not contain valid <r>...</r> JSON",
+        )
 
     if _needs_web_search(payload, thresholds=thresholds) and web_search_fn is not None:
         try:
@@ -416,8 +440,12 @@ def assess_file_with_llm(
                 retry_payload = extract_tagged_json(_response_text(retry_response))
                 if retry_payload is not None:
                     payload = retry_payload
-            except Exception:
-                pass
+            except Exception as exc:
+                return _llm_error_result(
+                    file_path=file_path,
+                    base_result=base_result,
+                    reason=f"model retry after web augmentation failed: {exc}",
+                )
 
     return _map_payload_to_result(
         payload=payload,

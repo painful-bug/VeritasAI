@@ -56,9 +56,9 @@ That architecture produces fast editor feedback while preserving cross-file unde
 
 The extension does not send the full file on every edit. It tracks a changed line window, waits for inactivity, extracts a snippet, and sends only that region plus a line offset so findings can be remapped to absolute file lines.
 
-### 3.2 Deterministic First
+### 3.2 LLM-First Review
 
-`analysis/core.py` always produces a baseline result. LLM review is additive, not foundational. If the model layer fails, deterministic findings still exist.
+`analysis/core.py` now prepares file eligibility, structural summaries, and predicted outputs. Actual compliance judgement for supported files is produced by the LLM review layer, not by heuristic rules in `core.py`.
 
 ### 3.3 Repository-Aware Reasoning
 
@@ -226,7 +226,7 @@ Key design detail:
 
 `DIRECTORY_ANALYSIS.md` is both output and input. It is produced by the backend for its own future use, but it is never treated as codebase source material to review.
 
-## 5.5 Deterministic File Review Engine
+## 5.5 File Preparation Layer
 
 Primary file:
 
@@ -239,21 +239,20 @@ Responsibilities:
 - extract schema hints,
 - detect local and external data sources,
 - identify sensitive fields,
-- apply heuristic ethics/compliance rules,
-- build a baseline `FileResult`,
+- build a prepared `FileResult` shell for the LLM,
 - generate a human-readable summary,
 - infer likely real-world output of the code or file.
 
 Important behaviors:
 
-- Scans are deterministic.
+- This layer does not make the final compliance decision for supported files.
 - Review eligibility is enforced here, not only in the extension.
 - `DIRECTORY_ANALYSIS.md` is skipped as an agent-generated artifact.
 - Config/media/binary files are skipped.
 
-This layer is the hard baseline that exists even when the LLM stack is unavailable.
+This layer is the structural context builder that feeds the LLM review path.
 
-## 5.6 LLM Enrichment Layer
+## 5.6 LLM Review Layer
 
 Primary files:
 
@@ -264,8 +263,8 @@ Primary files:
 
 Responsibilities:
 
-- create an LLM client when a non-deterministic provider is configured,
-- combine baseline findings with nearby reviewed context and repository context,
+- create the active LLM client for the configured provider,
+- combine prepared file metadata with nearby reviewed context and repository context,
 - retrieve regulatory grounding from ChromaDB,
 - self-grade the quality of the answer,
 - optionally augment with web search,
@@ -279,9 +278,9 @@ This layer has two paths:
 
 The active file review node:
 
-- runs deterministic analysis first,
-- attempts LLM enrichment only if the file was not skipped,
-- keeps deterministic results if the LLM fails,
+- prepares metadata in `analysis/core.py`,
+- requires the LLM path for supported-file compliance decisions,
+- returns `ERROR` if the file is reviewable but the LLM cannot be created or cannot return valid review JSON,
 - remaps findings back to absolute lines with `line_offset`.
 
 ## 5.7 Retrieval Layer
@@ -319,7 +318,7 @@ Responsibilities:
 
 - resolve the workspace output directory,
 - write one Markdown compliance report per reviewed file,
-- include deterministic and agentic fields in the final artifact,
+- include LLM review, retrieval, and web-evidence fields in the final artifact,
 - preserve evidence provenance.
 
 Generated report location:
@@ -469,8 +468,8 @@ MCP Server -> LangGraph: start ComplianceCheck
 LangGraph -> code_reviewer: ensure DIRECTORY_ANALYSIS.md exists and is current
 code_reviewer -> LangGraph: agentic_context + analysis path
 LangGraph -> review_file: review snippet
-review_file -> analysis/core.py: deterministic baseline analysis
-review_file -> analysis/llm_review.py: optional enrichment with repository + nearby context
+review_file -> analysis/core.py: prepare file metadata and eligibility
+review_file -> analysis/llm_review.py: perform repository-aware LLM compliance review
 analysis/llm_review.py -> rag/retriever.py: retrieve local regulatory evidence
 analysis/llm_review.py -> analysis/llm_review.py: self-grade relevancy / faithfulness / context quality
 
@@ -532,9 +531,9 @@ Purpose:
 Execution order:
 
 1. Emit `file_started`
-2. Run deterministic review
-3. Optionally create an LLM
-4. If available, enrich with RAG-first agentic review
+2. Prepare file metadata and enforce skip rules
+3. Create an LLM client unless review is disabled or the file was skipped
+4. Run RAG-first repository-aware LLM review
 5. Apply snippet line offsets
 6. Emit `agentic_grade`, retrieval, and web events
 7. Emit one `violation_found` event per finding
@@ -564,7 +563,7 @@ The LLM does not reason over the snippet in isolation. The context stack is laye
 [Changed snippet]
     |
     v
-[Baseline deterministic summary]
+[Prepared file summary]
     |
     v
 [Nearby reviewed_context]
@@ -585,7 +584,7 @@ The LLM does not reason over the snippet in isolation. The context stack is laye
 Interpretation:
 
 - The snippet gives local syntax and lines.
-- The baseline summary anchors the first interpretation.
+- The prepared file summary anchors the first interpretation.
 - Nearby reviewed context preserves continuity across repeated edits.
 - `DIRECTORY_ANALYSIS.md` supplies cross-file intent and repository purpose.
 - RAG adds regulatory grounding.
@@ -668,7 +667,7 @@ If ingestion or collection initialization fails, the system continues without re
 
 ### 15.4 LLM Failure
 
-If provider initialization fails or invocation raises, the deterministic baseline result is preserved.
+If provider initialization fails or invocation raises, the result becomes `ERROR` for supported files rather than silently downgrading to a heuristic-only review.
 
 ### 15.5 Stale Editor State
 

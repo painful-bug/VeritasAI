@@ -21,23 +21,10 @@ def _base_result(file_path: str) -> dict:
         "file_path": file_path,
         "file_type": "source_code",
         "language": "Python",
-        "status": "WARN",
-        "summary": "Baseline summary",
+        "status": "PASS",
+        "summary": "Prepared file summary",
         "predicted_output": "Produces predictions.",
-        "findings": [
-            {
-                "severity": "MEDIUM",
-                "file_path": file_path,
-                "start_line": 3,
-                "end_line": 3,
-                "regulation_name": "GDPR — Articles 5, 9, and 25",
-                "jurisdiction": "EU",
-                "explanation": "Uses sensitive fields.",
-                "remedy": "Mask fields.",
-                "rag_chunk_id": "p1_c0",
-                "rag_page": 1,
-            }
-        ],
+        "findings": [],
         "report_path": None,
         "error": None,
     }
@@ -96,8 +83,8 @@ def test_assess_file_with_llm_runs_web_augmentation_when_needed() -> None:
         base_result=_base_result(file_path),
         query_rag=query_rag,
         top_k=3,
-        provider="deterministic",
-        model="deterministic",
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
         config={
             "agentic": {
                 "runtime_mode": "hybrid",
@@ -122,17 +109,9 @@ def test_assess_file_with_llm_runs_web_augmentation_when_needed() -> None:
     assert result["findings"][0]["rag_chunk_id"] == "p1_c0"
 
 
-def test_assess_file_with_llm_keeps_baseline_findings_when_model_returns_none() -> None:
+def test_assess_file_with_llm_returns_error_when_model_response_is_invalid() -> None:
     file_path = "/tmp/example.py"
-    llm = FakeLLM(
-        [
-            (
-                '<r>{"Relevancy":0.8,"Faithfulness":0.9,"Context Quality":0.8,'
-                '"Needs Web Search":false,"Explanation":"Enough context","Answer":"ok",'
-                '"status":"WARN","summary":"kept","findings":[]}</r>'
-            )
-        ]
-    )
+    llm = FakeLLM(["not valid tagged json"])
 
     result = assess_file_with_llm(
         llm=llm,
@@ -141,15 +120,15 @@ def test_assess_file_with_llm_keeps_baseline_findings_when_model_returns_none() 
         base_result=_base_result(file_path),
         query_rag=lambda description, top_k: [],
         top_k=3,
-        provider="deterministic",
-        model="deterministic",
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
         config={"agentic": {"runtime_mode": "hybrid", "grade_thresholds": {}}},
         web_search_fn=None,
     )
 
-    assert result is not None
-    assert result["findings"]
-    assert result["findings"][0]["explanation"] == "Uses sensitive fields."
+    assert result["status"] == "ERROR"
+    assert result["findings"] == []
+    assert "did not contain valid <r>...</r> JSON" in (result["error"] or "")
 
 
 def test_assess_file_with_llm_includes_repository_analysis_context() -> None:
@@ -186,16 +165,16 @@ def test_assess_file_with_llm_includes_repository_analysis_context() -> None:
         base_result=_base_result(file_path),
         query_rag=lambda description, top_k: [],
         top_k=3,
-        provider="deterministic",
-        model="deterministic",
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
         config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}},
         web_search_fn=None,
         reviewed_context=reviewed_context,
         repository_context=repository_context,
     )
 
-    assert result is not None
     assert llm.prompts
+    assert "You are the final compliance reviewer" in llm.prompts[0]
     assert "Repository-wide DIRECTORY_ANALYSIS context" in llm.prompts[0]
     assert "VS Code integration" in llm.prompts[0]
     assert "Nearby reviewed context" in llm.prompts[0]

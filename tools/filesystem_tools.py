@@ -68,7 +68,7 @@ def read_text_file(
         raise FileNotFoundError(f"File not found: {path}")
     if not resolved.is_file():
         raise IsADirectoryError(f"Path is a directory: {path}")
-
+    
     with resolved.open("rb") as handle:
         header = handle.read(8192)
         remainder = handle.read()

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from config_loader import load_config
-from models.state import FileResult, Finding
+from models.state import FileResult
 from tools.filesystem_tools import read_text_file
 from utils.strings import shorten, slugify_filename
 
@@ -72,60 +72,6 @@ PATH_PATTERN = re.compile(
     r"(?P<path>(?:\./|\.\./|/)?(?:[A-Za-z0-9_.-]+/)*(?:data|dataset|datasets|models|artifacts|outputs|knowledge)[A-Za-z0-9_./-]*\.(?:csv|tsv|json|jsonl|yaml|yml|txt|md))",
     re.IGNORECASE,
 )
-
-RULES: list[dict[str, Any]] = [
-    {
-        "name": "Protected attributes used in automated employment context",
-        "severity": "HIGH",
-        "regulation_name": "EU AI Act — Article 10 Data and Data Governance",
-        "jurisdiction": "EU",
-        "query": "automated hiring decision system using demographic attributes including gender age race",
-        "primary": ["hiring", "candidate", "applicant", "resume", "employment", "recruit"],
-        "context": ["gender", "age", "race", "ethnicity", "disability", "zip", "zipcode", "nationality", "sex"],
-        "remedy": "Remove protected attributes from automated employment decisions and document human review, fairness checks, and lawful basis before deployment.",
-    },
-    {
-        "name": "Biometric surveillance or identification workflow detected",
-        "severity": "HIGH",
-        "regulation_name": "EU AI Act — Article 5 Prohibited AI Practices",
-        "jurisdiction": "EU",
-        "query": "biometric surveillance facial recognition identification system authorization consent",
-        "primary": ["face", "facial", "biometric", "fingerprint", "iris", "voiceprint"],
-        "context": ["surveillance", "recognition", "identify", "tracking", "watchlist", "monitor"],
-        "remedy": "Pause deployment until the biometric use case, legal basis, authorization boundary, and human oversight controls are explicitly documented and approved.",
-    },
-    {
-        "name": "Sensitive personal data appears in an AI pipeline",
-        "severity": "MEDIUM",
-        "regulation_name": "GDPR — Articles 5, 9, and 25",
-        "jurisdiction": "EU",
-        "query": "personal data used for machine learning without safeguards minimization access controls",
-        "primary": ["dataset", "model", "train", "predict", "feature", "inference", "classifier"],
-        "context": ["email", "phone", "ssn", "passport", "medical", "health", "location", "gps"],
-        "remedy": "Add data minimization, retention, access controls, and masking before the data is used in training or inference.",
-    },
-    {
-        "name": "Synthetic media generation lacks disclosure controls",
-        "severity": "MEDIUM",
-        "regulation_name": "EU AI Act — Article 50 Transparency Obligations",
-        "jurisdiction": "EU",
-        "query": "synthetic media disclosure watermark transparency requirement generative AI",
-        "primary": ["deepfake", "synthetic media", "face swap", "voice clone", "avatar", "generated image"],
-        "context": ["generate", "render", "synthesize", "model"],
-        "remedy": "Add clear disclosure and provenance controls so generated or manipulated media is identifiable to downstream users.",
-    },
-    {
-        "name": "Missing governance, logging, or human oversight controls",
-        "severity": "LOW",
-        "regulation_name": "NIST AI RMF — Govern Function",
-        "jurisdiction": "Global",
-        "query": "high risk AI documentation logging human oversight audit controls",
-        "primary": ["model", "predict", "classify", "recommend", "score", "decision"],
-        "context": [],
-        "missing": ["audit", "logging", "human", "review", "oversight", "fairness", "bias", "explain"],
-        "remedy": "Add audit logging, review checkpoints, and human oversight documentation so consequential outputs can be challenged and traced.",
-    },
-]
 
 
 def detect_language(path: str | Path) -> str | None:
@@ -233,73 +179,6 @@ def report_filename_for(file_path: str) -> str:
     return f"{slugify_filename(stem)}_analysis_report.md"
 
 
-def _find_line(content: str, keywords: list[str]) -> int:
-    lines = content.splitlines()
-    lowered_keywords = [keyword.lower() for keyword in keywords]
-    for index, line in enumerate(lines, start=1):
-        lowered = line.lower()
-        if any(keyword in lowered for keyword in lowered_keywords):
-            return index
-    return 1
-
-
-def _query_rag(query_rag: QueryFn | None, description: str, top_k: int) -> list[dict[str, Any]]:
-    if query_rag is None:
-        return []
-    try:
-        return query_rag(description, top_k)
-    except Exception:
-        return []
-
-
-def _first_rag_metadata(hits: list[dict[str, Any]]) -> tuple[str, int]:
-    if not hits:
-        return "", 0
-    metadata = hits[0].get("metadata", {}) if isinstance(hits[0], dict) else {}
-    return str(metadata.get("chunk_id", "")), int(metadata.get("page", 0) or 0)
-
-
-def _build_explanation(rule: dict[str, Any], hits: list[str], file_path: str, file_type: str) -> str:
-    evidence = ", ".join(sorted(set(hits[:6])))
-    return (
-        f"{Path(file_path).name} contains {evidence} in a {file_type.replace('_', ' ')} context that aligns with "
-        f"{rule['regulation_name']}."
-    )
-
-
-def _build_finding(
-    rule: dict[str, Any],
-    file_path: str,
-    file_type: str,
-    content: str,
-    hits: list[str],
-    rag_hits: list[dict[str, Any]],
-) -> Finding:
-    line_number = _find_line(content, hits)
-    rag_chunk_id, rag_page = _first_rag_metadata(rag_hits)
-    return {
-        "severity": rule["severity"],
-        "file_path": file_path,
-        "start_line": line_number,
-        "end_line": line_number,
-        "regulation_name": rule["regulation_name"],
-        "jurisdiction": rule["jurisdiction"],
-        "explanation": _build_explanation(rule, hits, file_path, file_type),
-        "remedy": rule["remedy"],
-        "rag_chunk_id": rag_chunk_id,
-        "rag_page": rag_page,
-    }
-
-
-def _status_from_findings(findings: list[Finding]) -> str:
-    severities = {finding["severity"] for finding in findings}
-    if "HIGH" in severities:
-        return "FAIL"
-    if "MEDIUM" in severities:
-        return "WARN"
-    return "PASS"
-
-
 def _summarize(file_path: str, file_type: str, content: str, fields: list[str], sources: list[dict[str, str]]) -> str:
     path = Path(file_path)
     if file_type == "source_code":
@@ -315,12 +194,13 @@ def _summarize(file_path: str, file_type: str, content: str, fields: list[str], 
             signals.append("application logic")
         return (
             f"{path.name} is {detect_language(file_path) or 'source'} code that appears to implement "
-            f"{', '.join(signals)}. It exposes {len(fields)} recognizable fields and {len(sources)} data sources."
+            f"{', '.join(signals)}. It exposes {len(fields)} recognizable fields and {len(sources)} data sources. "
+            "This summary is structural context for the LLM review, not the final compliance judgement."
         )
     if file_type == "structured_data":
         return (
             f"{path.name} appears to be structured data with fields such as "
-            f"{', '.join(fields[:6]) or 'unknown columns'}."
+            f"{', '.join(fields[:6]) or 'unknown columns'}. This summary is structural context for the LLM review."
         )
     if file_type == "config":
         return f"{path.name} appears to configure an AI or data-processing workflow."
@@ -425,60 +305,15 @@ def analyze_file(
 
     fields = infer_schema_fields(content, file_path, inferred_type)
     data_sources = extract_data_sources(content)
-    lowered = content.lower()
-    findings: list[Finding] = []
-    top_k = int(effective.get("rag", {}).get("top_k", 5))
-
-    for rule in RULES:
-        primary_hits = [keyword for keyword in rule["primary"] if keyword in lowered]
-        if not primary_hits:
-            continue
-
-        missing_controls = rule.get("missing")
-        if missing_controls:
-            if any(keyword in lowered for keyword in missing_controls):
-                continue
-            hits = primary_hits
-        else:
-            context_hits = [keyword for keyword in rule.get("context", []) if keyword in lowered]
-            if rule.get("context") and not context_hits:
-                continue
-            hits = primary_hits + context_hits
-
-        rag_hits = _query_rag(query_rag, rule["query"], top_k)
-        findings.append(_build_finding(rule, file_path, inferred_type, content, hits, rag_hits))
-
-    sensitive_fields = identify_sensitive_fields(" ".join(fields) + "\n" + content[:4000])
-    if inferred_type == "structured_data" and len(set(sensitive_fields)) >= 3:
-        rag_hits = _query_rag(
-            query_rag,
-            "tabular dataset containing multiple sensitive attributes used in an AI workflow",
-            top_k,
-        )
-        rag_chunk_id, rag_page = _first_rag_metadata(rag_hits)
-        findings.append(
-            {
-                "severity": "MEDIUM",
-                "file_path": file_path,
-                "start_line": 1,
-                "end_line": 1,
-                "regulation_name": "GDPR — Article 9 Special Categories of Personal Data",
-                "jurisdiction": "EU",
-                "explanation": f"The dataset exposes multiple sensitive attributes: {', '.join(sorted(set(sensitive_fields))[:8])}.",
-                "remedy": "Minimize sensitive fields, justify lawful basis, and add access, retention, and review controls before using this dataset.",
-                "rag_chunk_id": rag_chunk_id,
-                "rag_page": rag_page,
-            }
-        )
 
     result: FileResult = {
         "file_path": file_path,
         "file_type": inferred_type,
         "language": detect_language(file_path),
-        "status": _status_from_findings(findings),
+        "status": "PASS",
         "summary": _summarize(file_path, inferred_type, content, fields, data_sources),
         "predicted_output": _predict_output(inferred_type, content, fields),
-        "findings": findings,
+        "findings": [],
         "report_path": None,
         "error": None,
     }

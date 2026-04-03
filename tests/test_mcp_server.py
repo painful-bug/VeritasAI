@@ -4,11 +4,46 @@ import asyncio
 from pathlib import Path
 
 import mcp_server
+import nodes.review_file as review_file_module
 from graphs.compliance_graph import compile_graph
 from mcp_server import _ensure_runtime, stream_compliance_check
 
 
-def test_stream_compliance_check_yields_custom_and_completion_events(tmp_path: Path) -> None:
+def test_stream_compliance_check_yields_custom_and_completion_events(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(review_file_module, "try_create_llm", lambda provider, model, config=None: object())
+
+    def fake_assess_file_with_llm(**kwargs):
+        file_path = kwargs["file_path"]
+        return {
+            "file_path": file_path,
+            "file_type": "source_code",
+            "language": "Python",
+            "status": "FAIL",
+            "summary": "LLM found a high-risk employment AI issue.",
+            "predicted_output": "Produces hiring recommendations.",
+            "findings": [
+                {
+                    "severity": "HIGH",
+                    "file_path": file_path,
+                    "start_line": 1,
+                    "end_line": 1,
+                    "regulation_name": "EU AI Act — Article 10 Data and Data Governance",
+                    "jurisdiction": "EU",
+                    "explanation": "Protected attributes appear in an employment-related model flow.",
+                    "remedy": "Remove protected attributes and add human review.",
+                    "rag_chunk_id": "p1_c0",
+                    "rag_page": 1,
+                }
+            ],
+            "report_path": None,
+            "error": None,
+            "agentic_grade": None,
+            "retrieval_evidence": [],
+            "web_search_evidence": [],
+        }
+
+    monkeypatch.setattr(review_file_module, "assess_file_with_llm", fake_assess_file_with_llm)
+
     file_path = tmp_path / "unsafe_hiring.py"
     file_path.write_text(
         """
@@ -34,8 +69,8 @@ model.fit(X, y)
                 graph=graph,
                 file_path=str(file_path),
                 file_content=file_path.read_text(encoding="utf-8"),
-                provider="deterministic",
-                model="deterministic",
+                provider="openrouter",
+                model="qwen/qwen3.6-plus:free",
                 thread_id="thread-1",
             )
         ]

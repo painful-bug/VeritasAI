@@ -1,10 +1,10 @@
-<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T19:34:39.306984+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/vscode-extension", "snapshot_hash": "fdf624efbe3712a3e6d7db57c879436eeac11abf65035f3e62404e972494387c", "file_count": 14, "directory_count": 3} -->
+<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T19:37:19.369137+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/vscode-extension", "snapshot_hash": "6de9e7272f9802907cf35c1f1332b0d41238333117676fae43a279480ccbae8e", "file_count": 14, "directory_count": 3} -->
 
 # Directory Analysis
 
-Generated: `2026-04-03T19:34:39.306984+00:00`
+Generated: `2026-04-03T19:37:19.369137+00:00`
 Workspace root: `/Users/aishik/Documents/Programming/ethics_agent/vscode-extension`
-Snapshot hash: `fdf624efbe3712a3e6d7db57c879436eeac11abf65035f3e62404e972494387c`
+Snapshot hash: `6de9e7272f9802907cf35c1f1332b0d41238333117676fae43a279480ccbae8e`
 Files analysed: `14`
 Directories analysed: `3`
 
@@ -81,7 +81,7 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `Shell`
-- Size: `139` bytes
+- Size: `93` bytes
 - Role: install_extension_locally.sh is Shell code that appears to implement application logic. It exposes 0 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file appears to implement logic that transforms inputs into derived outputs.
 - Top-level symbols: None inferred.
@@ -89,7 +89,7 @@ Directories analysed: `3`
 - Internal references: None resolved.
 - Data sources: None detected.
 - Sensitive signals: `age`
-- Preview note: #!/bin/bash git add . git commit -m $1 npm run compile && code --install-extension ./vscode-extension/ai-ethics-compliance-agent-0.1.0.vsix
+- Preview note: #!/bin/bash npm run compile && code --install-extension ai-ethics-compliance-agent-0.1.0.vsix
 - Preview coverage: Full preview captured within configured limit.
 
 ### `package-lock.json`

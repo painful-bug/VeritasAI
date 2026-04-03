@@ -13,7 +13,7 @@ def test_extract_data_sources_finds_urls_and_local_paths() -> None:
     assert "https://example.com/data" in values
 
 
-def test_analyze_file_flags_employment_risk_and_attaches_rag_metadata(tmp_path: Path) -> None:
+def test_analyze_file_prepares_review_metadata_without_heuristic_findings(tmp_path: Path) -> None:
     file_path = tmp_path / "unsafe_hiring.py"
     file_path.write_text(
         """
@@ -28,15 +28,13 @@ model.fit(X, y)
     result, sources = analyze_file(
         str(file_path),
         config={"rag": {"top_k": 1}},
-        query_rag=lambda description, top_k: [
-            {"text": "employment-related KB text", "metadata": {"chunk_id": "p7_c2", "page": 7}}
-        ],
         file_content=file_path.read_text(encoding="utf-8"),
     )
 
-    assert result["status"] == "FAIL"
-    assert any(finding["severity"] == "HIGH" for finding in result["findings"])
-    assert any(finding["rag_chunk_id"] == "p7_c2" and finding["rag_page"] == 7 for finding in result["findings"])
+    assert result["status"] == "PASS"
+    assert result["findings"] == []
+    assert "structural context for the LLM review" in result["summary"]
+    assert result["predicted_output"]
     assert sources
 
 

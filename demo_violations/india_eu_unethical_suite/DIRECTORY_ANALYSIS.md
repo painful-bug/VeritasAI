@@ -1,17 +1,17 @@
-<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T18:45:28.075294+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/demo_violations/india_eu_unethical_suite", "snapshot_hash": "92dc0805525581fe5f7097936cc89bfab4e2f439903f43bb63fb0eaf56154e48", "file_count": 15, "directory_count": 5} -->
+<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T19:15:08.413391+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/demo_violations/india_eu_unethical_suite", "snapshot_hash": "9735e6d675896f49a99009a48ba7c679f1133a649f7146dbd5d7383781f6d829", "file_count": 15, "directory_count": 5} -->
 
 # Directory Analysis
 
-Generated: `2026-04-03T18:45:28.075294+00:00`
+Generated: `2026-04-03T19:15:08.413391+00:00`
 Workspace root: `/Users/aishik/Documents/Programming/ethics_agent/demo_violations/india_eu_unethical_suite`
-Snapshot hash: `92dc0805525581fe5f7097936cc89bfab4e2f439903f43bb63fb0eaf56154e48`
+Snapshot hash: `9735e6d675896f49a99009a48ba7c679f1133a649f7146dbd5d7383781f6d829`
 Files analysed: `15`
 Directories analysed: `5`
 
 ## Repository Overview
 
 - Purpose: This folder is an intentionally non-compliant demo codebase for testing AI ethics compliance scanners. It is designed to trigger detections for both EU and Indian legal or policy concerns. - This code is intentionally unsafe and non-compliant. - Use only for compliance testing, education, and red-team validation. - Do not deploy this code in production. - Automated hiring based on protected or...
-- Main themes: fields, that, implement, exposes, recognizable, sources, this, automated
+- Main themes: this, fields, structural, that, implement, exposes, recognizable, sources
 - Dominant languages: Python (8)
 - File type mix: source_code (8), structured_data (5), document (2)
 - Likely entrypoints: `src/biometric_surveillance.py`, `src/deepfake_campaign.py`, `src/hiring_bias_engine.py`, `src/no_oversight_or_redress.py`, `src/run_all.py`, `src/social_scoring_system.py`
@@ -84,7 +84,7 @@ Directories analysed: `5`
 - Type: `structured_data`
 - Language: `n/a`
 - Size: `736` bytes
-- Role: policy_bypass.yaml appears to be structured data with fields such as unknown columns.
+- Role: policy_bypass.yaml appears to be structured data with fields such as unknown columns. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: None inferred.
@@ -99,7 +99,7 @@ Directories analysed: `5`
 - Type: `structured_data`
 - Language: `n/a`
 - Size: `951` bytes
-- Role: candidates_sensitive.csv appears to be structured data with fields such as candidate_id, name, email, phone, age, gender.
+- Role: candidates_sensitive.csv appears to be structured data with fields such as candidate_id, name, email, phone, age, gender. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: `candidate_id`, `name`, `email`, `phone`, `age`, `gender`, `caste`, `religion`, `disability`, `zipcode`, `nationality`, `aadhaar`
@@ -114,7 +114,7 @@ Directories analysed: `5`
 - Type: `structured_data`
 - Language: `n/a`
 - Size: `462` bytes
-- Role: citizen_scoring.csv appears to be structured data with fields such as citizen_id, credit_score, social_media_risk, political_affiliation, protest_participation, face_match_score.
+- Role: citizen_scoring.csv appears to be structured data with fields such as citizen_id, credit_score, social_media_risk, political_affiliation, protest_participation, face_match_score. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: `citizen_id`, `credit_score`, `social_media_risk`, `political_affiliation`, `protest_participation`, `face_match_score`, `neighbourhood_risk`, `benefit_priority`, `label`
@@ -129,7 +129,7 @@ Directories analysed: `5`
 - Type: `structured_data`
 - Language: `n/a`
 - Size: `362` bytes
-- Role: release_plan.csv appears to be structured data with fields such as asset_id, person_name, consent_obtained, disclosure_label, distribution_channel, target_audience.
+- Role: release_plan.csv appears to be structured data with fields such as asset_id, person_name, consent_obtained, disclosure_label, distribution_channel, target_audience. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: `asset_id`, `person_name`, `consent_obtained`, `disclosure_label`, `distribution_channel`, `target_audience`, `sensitivity`
@@ -144,7 +144,7 @@ Directories analysed: `5`
 - Type: `structured_data`
 - Language: `n/a`
 - Size: `620` bytes
-- Role: surveillance_feed.csv appears to be structured data with fields such as camera_id, subject_id, timestamp, location, emotion, inferred_religion.
+- Role: surveillance_feed.csv appears to be structured data with fields such as camera_id, subject_id, timestamp, location, emotion, inferred_religion. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: `camera_id`, `subject_id`, `timestamp`, `location`, `emotion`, `inferred_religion`, `inferred_ethnicity`, `child_present`, `confidence`
@@ -174,7 +174,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `86` bytes
-- Role: __init__.py is Python code that appears to implement application logic. It exposes 0 recognizable fields and 0 data sources.
+- Role: __init__.py is Python code that appears to implement application logic. It exposes 0 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file appears to implement logic that transforms inputs into derived outputs.
 - Top-level symbols: None inferred.
 - Schema or fields: None inferred.
@@ -189,7 +189,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `1440` bytes
-- Role: biometric_surveillance.py is Python code that appears to implement automated scoring or inference. It exposes 8 recognizable fields and 0 data sources.
+- Role: biometric_surveillance.py is Python code that appears to implement automated scoring or inference. It exposes 8 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely produces predictions, classifications, scores, or recommendations that affect downstream decisions.
 - Top-level symbols: `run_mass_surveillance`
 - Schema or fields: `FEED_FILE`, `ONLY`, `__name__`, `alerts`, `encoding`, `handle`, `reader`, `risk`
@@ -204,7 +204,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `1308` bytes
-- Role: deepfake_campaign.py is Python code that appears to implement application logic. It exposes 10 recognizable fields and 0 data sources.
+- Role: deepfake_campaign.py is Python code that appears to implement application logic. It exposes 10 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as PLAN_FILE, __name__, disclosure, else, encoding for downstream use.
 - Top-level symbols: `schedule_release`
 - Schema or fields: `PLAN_FILE`, `__name__`, `disclosure`, `else`, `encoding`, `handle`, `label`, `reader`, `scheduled`, `status`
@@ -219,7 +219,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `2037` bytes
-- Role: hiring_bias_engine.py is Python code that appears to implement automated scoring or inference. It exposes 14 recognizable fields and 0 data sources.
+- Role: hiring_bias_engine.py is Python code that appears to implement automated scoring or inference. It exposes 14 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely produces predictions, classifications, scores, or recommendations that affect downstream decisions.
 - Top-level symbols: `rank_candidates`, `auto_hire_or_reject`
 - Schema or fields: `DATA_FILE`, `ONLY`, `__name__`, `auto_apply_decisions`, `decisions`, `enable_sensitive_profiling`, `encoding`, `handle`, `item`, `key`, `ranked`, `reader`
@@ -234,7 +234,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `618` bytes
-- Role: no_oversight_or_redress.py is Python code that appears to implement application logic. It exposes 2 recognizable fields and 0 data sources.
+- Role: no_oversight_or_redress.py is Python code that appears to implement application logic. It exposes 2 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as __name__, dict for downstream use.
 - Top-level symbols: `system_governance_snapshot`
 - Schema or fields: `__name__`, `dict`
@@ -249,7 +249,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `900` bytes
-- Role: run_all.py is Python code that appears to implement application logic. It exposes 7 recognizable fields and 0 data sources.
+- Role: run_all.py is Python code that appears to implement application logic. It exposes 7 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Campaign, Engine, None, Snapshot, Surveillance for downstream use.
 - Top-level symbols: `main`
 - Schema or fields: `Campaign`, `Engine`, `None`, `Snapshot`, `Surveillance`, `System`, `__name__`
@@ -264,7 +264,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `449` bytes
-- Role: settings.py is Python code that appears to implement automated scoring or inference. It exposes 12 recognizable fields and 0 data sources.
+- Role: settings.py is Python code that appears to implement automated scoring or inference. It exposes 12 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely produces predictions, classifications, scores, or recommendations that affect downstream decisions.
 - Top-level symbols: `UnsafePolicy`
 - Schema or fields: `POLICY`, `UnsafePolicy`, `allow_no_consent_data_use`, `auto_apply_decisions`, `bool`, `enable_emotion_inference`, `enable_sensitive_profiling`, `frozen`, `int`, `retention_days`, `skip_explanations`, `skip_human_oversight`
@@ -279,7 +279,7 @@ Directories analysed: `5`
 - Type: `source_code`
 - Language: `Python`
 - Size: `1557` bytes
-- Role: social_scoring_system.py is Python code that appears to implement automated scoring or inference. It exposes 11 recognizable fields and 0 data sources.
+- Role: social_scoring_system.py is Python code that appears to implement automated scoring or inference. It exposes 11 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely produces predictions, classifications, scores, or recommendations that affect downstream decisions.
 - Top-level symbols: `calculate_social_score`, `assign_entitlements`
 - Schema or fields: `ONLY`, `SCORING_FILE`, `__name__`, `encoding`, `float`, `handle`, `outcome`, `outcomes`, `reader`, `record`, `score`

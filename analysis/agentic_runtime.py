@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from prompts.loader import load_prompt
 from rag.retriever import Retriever
 from utils.strings import extract_tagged_json
 
@@ -74,14 +75,13 @@ def _needs_web(payload: dict[str, Any], relevancy_force_threshold: float) -> boo
 
 def _build_system_prompt() -> str:
     return (
-        "You are an AI ethics compliance reviewer. "
-        "You must first use retriever_tool to fetch local regulatory context. "
-        "Then review the file and output ONLY JSON inside <r>...</r>. "
-        "Include exactly these keys: Relevancy, Faithfulness, Context Quality, Needs Web Search, "
-        "Explanation, Answer, summary, status, findings. "
-        "findings must be a list with items containing severity, start_line, end_line, regulation_name, "
-        "jurisdiction, explanation, remedy, rag_chunk_id, rag_page. "
-        "All scores must be floats between 0 and 1."
+        f"{load_prompt('file_reviewer').strip()}\n\n"
+        "Tool-use requirements:\n"
+        "- Call `retriever_tool` before finalising the review for any supported file.\n"
+        "- Use `websearch_tool` only when retrieved context is insufficient, ambiguous, or likely stale.\n"
+        "- Treat repository context and nearby reviewed context as important cross-file evidence.\n"
+        "- Preserve snippet-relative line numbers exactly as they appear in the provided file content.\n"
+        "- Return ONLY the final JSON inside <r>...</r>."
     )
 
 
@@ -155,9 +155,10 @@ def run_pydantic_agentic_review(
     try:
         run = agent.run_sync(
             (
+                "Perform a repository-aware AI ethics compliance review.\n\n"
                 f"Question: {question}\n\n"
                 f"Context:\n{context}\n\n"
-                "If context is insufficient, set Needs Web Search to true."
+                "Use retriever_tool first. If context remains insufficient, set Needs Web Search to true."
             ),
             deps=_Deps(question=question, context=context, top_k=top_k),
         )
@@ -181,7 +182,11 @@ def run_pydantic_agentic_review(
             )
             try:
                 rerun = agent.run_sync(
-                    f"Question: {question}\n\nContext:\n{augmented_context}",
+                    (
+                        "Perform the final repository-aware AI ethics compliance review.\n\n"
+                        f"Question: {question}\n\n"
+                        f"Context:\n{augmented_context}"
+                    ),
                     deps=_Deps(question=question, context=augmented_context, top_k=top_k),
                 )
                 reraw = rerun.data if hasattr(rerun, "data") else str(rerun)
