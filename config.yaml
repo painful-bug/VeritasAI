@@ -1,121 +1,111 @@
-# ============================================================
-# AI Ethics Compliance Agent — Configuration
-# ============================================================
-
 llm:
-  default_provider: "openrouter"
-  default_model: "qwen/qwen3.6-plus-preview:free"
+  default_provider: openrouter
+  default_model: qwen/qwen3.6-plus:free
   max_retries: 3
   retry_backoff_jitter: true
   rate_limit_rps: 2
   rate_limit_burst: 10
-  temperature: 0.1
   providers:
+    ollama_cloud:
+      base_url: https://cloud.ollama.com
+      models:
+        - glm4:cloud
+        - llama3.3:cloud
+        - qwen2.5:cloud
+    openrouter:
+      base_url: https://openrouter.ai/api/v1
+      models:
+        - qwen/qwen3.6-plus:free
     groq:
       models:
-        - "llama-3.3-70b-versatile"
-        - "llama-3.1-8b-instant"
-        - "gemma2-9b-it"
-    openrouter:
-      models:
-        - "qwen/qwen3.6-plus-preview:free"
-        - "nvidia/nemotron-3-super-120b-a12b:free"
-        - "qwen/qwen3-coder:free"
+        - llama-3.3-70b-versatile
+        - mixtral-8x7b-32768
+        - gemma2-9b-it
     ollama_local:
-      models:
-        - "qwen2.5-coder:7b"
-        - "llama3.1:8b"
-        - "gemma2:9b"
-    ollama_cloud:
-      models:
-        - "minimax-m2.7:cloud"
-
-scan:
-  max_parallel_agents: 4
-  max_concurrency: 4
-  max_file_size_mb: 10
-  output_dir: "compliance-analysis"
-  excluded_extensions:
-    - ".pyc"
-    - ".pyo"
-    - ".so"
-    - ".dll"
-    - ".exe"
-    - ".bin"
-    - ".o"
-    - ".class"
-    - ".jar"
-    - ".war"
-    - ".lock"
-  excluded_dirs:
-    - "__pycache__"
-    - ".git"
-    - ".svn"
-    - "node_modules"
-    - ".venv"
-    - "venv"
-    - ".tox"
-    - ".mypy_cache"
-    - ".pytest_cache"
-    - "dist"
-    - "build"
-    - ".crewai_storage"
-  skip_extensions:
-    - ".pyc"
-    - ".pyo"
-    - ".so"
-    - ".dll"
-    - ".exe"
-    - ".bin"
-    - ".o"
-    - ".class"
-    - ".jar"
-    - ".war"
-    - ".lock"
-
-knowledge:
-  pdf_path: "knowledge/ai_ethics_knowledge_base.pdf"
-  embedder_provider: "ollama"
-  embedder_model: "nomic-embed-text:v1.5"
-  # For OpenAI embeddings instead, use:
-  # embedder_provider: "openai"
-  # embedder_model: "text-embedding-3-small"
+      base_url: http://localhost:11434
+      models: []
 
 rag:
-  knowledge_base_pdf: "knowledge/ai_ethics_knowledge_base.pdf"
-  persist_dir: ".chroma_db"
-  chroma_persist_dir: ".chroma_db"
-  collection_name: "ai_ethics_kb"
-  chunk_size: 800
-  chunk_overlap: 120
-  top_k: 5
-  embedder_provider: "ollama"
-  embedder_model: "nomic-embed-text:v1.5"
+  knowledge_base_pdf: knowledge/ai_ethics_knowledge_base.pdf
+  chroma_persist_dir: .chroma_db
+  collection_name: ai_ethics_kb
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 3
+  embedding_model: all-MiniLM-L6-v2
 
-review:
-  llm_inline_content_chars: 30000
-  llm_rag_query_count: 5
-  llm_rag_hits_per_query: 3
+agentic:
+  enabled: true
+  runtime_mode: hybrid
+  max_retries: 2
+  retrieval_top_k: 3
+  retrieval_trust_min: 0.3
+  web_search_max_results: 3
+  grade_thresholds:
+    relevancy_min: 0.55
+    faithfulness_min: 0.6
+    context_quality_min: 0.5
+    force_web_search_relevancy_max: 0.35
+
+scan:
+  output_dir: compliance-analysis
+  max_file_size_mb: 50
+
+directory_analysis:
+  enabled: true
+  filename: DIRECTORY_ANALYSIS.md
+  preview_chars: 12000
+  exclude_dirs:
+    - .git
+    - .hg
+    - .svn
+    - .venv
+    - venv
+    - env
+    - node_modules
+    - __pycache__
+    - .mypy_cache
+    - .pytest_cache
+    - .ruff_cache
+    - .tox
+    - .idea
+    - .vscode
+    - .chroma_db
+    - dist
+    - build
+  exclude_globs:
+    - .env
+    - .env.*
+    - '*.pyc'
+    - '*.pyo'
+    - '*.so'
+    - '*.dylib'
+    - '*.dll'
+    - '*.class'
+    - '*.jar'
+    - '*.whl'
+    - '*.zip'
+    - '*.tar'
+    - '*.gz'
+    - '*.7z'
+    - '*.lock'
+    - .DS_Store
 
 filesystem:
   write_lock_timeout_s: 30
   read_retry_attempts: 3
   read_retry_min_wait_s: 0.5
   read_retry_max_wait_s: 4.0
-  bash_timeout_s: 60
-  bash_max_command_length: 1000
 
 checkpoint:
-  backend: "sqlite"
-  sqlite_path: ".langgraph_checkpoints.db"
-  postgres_uri_env: "POSTGRES_URI"
-
-web_search:
-  max_results: 3
-  retry_attempts: 3
-  fallback_provider: "duckduckgo"
+  backend: sqlite
+  sqlite_path: .langgraph_checkpoints.db
+  postgres_uri_env: POSTGRES_URI
 
 langsmith:
-  project: "ai-ethics-compliance-agent"
-  endpoint: "https://api.smith.langchain.com"
+  project: ai-ethics-compliance-agent
+  endpoint: https://api.smith.langchain.com
   tracing_v2: true
+
+extension:
+  debounce_ms: 5000

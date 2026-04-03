@@ -1,0 +1,7 @@
+camera_id,subject_id,timestamp,location,emotion,inferred_religion,inferred_ethnicity,child_present,confidence
+CAM-01,SUB-1001,2026-01-12T08:00:00Z,Metro-Gate-A,anxious,muslim,south_asian,no,0.83
+CAM-01,SUB-1002,2026-01-12T08:01:00Z,Metro-Gate-A,neutral,hindu,south_asian,yes,0.78
+CAM-07,SUB-2001,2026-01-12T08:02:00Z,Airport-Entry-3,angry,christian,white,no,0.81
+CAM-07,SUB-2002,2026-01-12T08:03:00Z,Airport-Entry-3,fearful,muslim,middle_eastern,no,0.74
+CAM-03,SUB-3001,2026-01-12T08:04:00Z,School-Zone-2,happy,hindu,south_asian,yes,0.79
+CAM-05,SUB-4001,2026-01-12T08:05:00Z,Court-Perimeter,sad,sikh,south_asian,no,0.76

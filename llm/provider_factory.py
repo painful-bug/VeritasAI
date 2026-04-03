@@ -4,22 +4,20 @@ import os
 import subprocess
 from typing import Any
 
-_LLM_CACHE: dict[tuple[str, str, str, float], Any] = {}
+from config_loader import load_config
 
+_LLM_CACHE: dict[tuple[str, str, str], Any] = {}
+_KNOWN_PROVIDERS = ("ollama_cloud", "openrouter", "groq", "ollama_local")
 
 
 def _make_rate_limiter(config: dict[str, Any]):
-    try:
-        from langchain_core.rate_limiters import InMemoryRateLimiter
-    except Exception:
-        return None
+    from langchain_core.rate_limiters import InMemoryRateLimiter
 
     llm_config = config.get("llm", {})
     return InMemoryRateLimiter(
         requests_per_second=float(llm_config.get("rate_limit_rps", 2)),
         max_bucket_size=int(llm_config.get("rate_limit_burst", 10)),
     )
-
 
 
 def provider_requires_api_key(provider: str) -> str | None:
@@ -31,6 +29,14 @@ def provider_requires_api_key(provider: str) -> str | None:
     }.get(provider)
 
 
+def missing_provider_credential(provider: str) -> str | None:
+    env_name = provider_requires_api_key(provider)
+    if not env_name:
+        return None
+    if os.getenv(env_name, "").strip():
+        return None
+    return env_name
+
 
 def list_local_ollama_models() -> list[str]:
     try:
@@ -38,53 +44,81 @@ def list_local_ollama_models() -> list[str]:
             ["ollama", "list"],
             text=True,
             capture_output=True,
-            check=True,
             timeout=8,
+            check=True,
         ).stdout
     except Exception:
         return []
 
     lines = [line.strip() for line in output.splitlines() if line.strip()]
-    if len(lines) <= 1:
-        return []
-    models: list[str] = []
-    for line in lines[1:]:
-        model = line.split()[0]
-        if model:
-            models.append(model)
-    return models
+    return [line.split()[0] for line in lines[1:] if line.split()]
 
 
-
-def get_available_models(config: dict[str, Any], provider: str) -> list[str]:
-    provider_config = config.get("llm", {}).get("providers", {}).get(provider, {})
-    models = list(provider_config.get("models", []))
+def get_available_models(config: dict[str, Any] | None, provider: str) -> list[str]:
+    effective = config or load_config()
+    models = list(effective.get("llm", {}).get("providers", {}).get(provider, {}).get("models", []))
     if provider == "ollama_local":
-        dynamic = [model for model in list_local_ollama_models() if model not in models]
-        models.extend(dynamic)
+        for model in list_local_ollama_models():
+            if model not in models:
+                models.append(model)
     return models
 
 
+def resolve_provider_model(provider: str, model: str, config: dict[str, Any] | None = None) -> tuple[str, str]:
+    effective = config or load_config()
+    llm_config = effective.get("llm", {}) or {}
+    configured_providers = llm_config.get("providers", {}) or {}
+    default_provider = str(llm_config.get("default_provider", "ollama_cloud") or "ollama_cloud").strip()
+    requested_provider = str(provider or "").strip() or default_provider
+    known_providers = set(configured_providers) | set(_KNOWN_PROVIDERS)
 
-def create_llm(provider: str, model: str, config: dict[str, Any], **kwargs: Any):
-    llm_config = config.get("llm", {})
-    temperature = kwargs.pop("temperature", llm_config.get("temperature", 0.1))
-    retries = int(llm_config.get("max_retries", 3))
-    provider_config = config.get("llm", {}).get("providers", {}).get(provider, {})
+    if requested_provider not in known_providers:
+        requested_provider = default_provider
+
+    available_models = get_available_models(effective, requested_provider)
+    requested_model = str(model or "").strip()
+    configured_default_model = str(llm_config.get("default_model", "") or "").strip()
+
+    if requested_model and (not available_models or requested_model in available_models):
+        return requested_provider, requested_model
+
+    if requested_provider == default_provider and configured_default_model:
+        if not available_models or configured_default_model in available_models:
+            return requested_provider, configured_default_model
+
+    if available_models:
+        return requested_provider, available_models[0]
+
+    if requested_model:
+        return requested_provider, requested_model
+
+    return requested_provider, configured_default_model
+
+
+def create_llm(provider: str, model: str, config: dict[str, Any] | None = None, **kwargs: Any):
+    effective = config or load_config()
+    provider, model = resolve_provider_model(provider, model, effective)
+    missing_credential = missing_provider_credential(provider)
+    if missing_credential:
+        raise ValueError(
+            f"Missing required credential {missing_credential} for provider {provider}."
+        )
+    provider_config = effective.get("llm", {}).get("providers", {}).get(provider, {})
     base_url = str(provider_config.get("base_url", ""))
-    cache_key = (provider, model, base_url, float(temperature))
+    cache_key = (provider, model, base_url)
     if cache_key in _LLM_CACHE:
         return _LLM_CACHE[cache_key]
 
-    rate_limiter = _make_rate_limiter(config)
+    rate_limiter = _make_rate_limiter(effective)
+    retries = int(effective.get("llm", {}).get("max_retries", 3))
+    temperature = kwargs.pop("temperature", 0)
 
     if provider == "ollama_cloud":
         from langchain_ollama import ChatOllama
 
-        base_url = provider_config.get("base_url", "https://cloud.ollama.com")
         llm = ChatOllama(
             model=model,
-            base_url=base_url,
+            base_url=base_url or "https://cloud.ollama.com",
             api_key=os.getenv("OLLAMA_CLOUD_API_KEY"),
             temperature=temperature,
             rate_limiter=rate_limiter,
@@ -93,13 +127,15 @@ def create_llm(provider: str, model: str, config: dict[str, Any], **kwargs: Any)
     elif provider == "openrouter":
         from langchain_openai import ChatOpenAI
 
-        base_url = provider_config.get("base_url", "https://openrouter.ai/api/v1")
         llm = ChatOpenAI(
             model=model,
-            base_url=base_url,
+            base_url=base_url or "https://openrouter.ai/api/v1",
             api_key=os.getenv("OPENROUTER_API_KEY"),
+            default_headers={
+                "HTTP-Referer": "https://local.ai-ethics-agent",
+                "X-Title": "AI Ethics Compliance Agent",
+            },
             temperature=temperature,
-            default_headers={"HTTP-Referer": "https://local.ethics-agent", "X-Title": "AI Ethics Compliance Agent"},
             rate_limiter=rate_limiter,
             **kwargs,
         )
@@ -116,10 +152,9 @@ def create_llm(provider: str, model: str, config: dict[str, Any], **kwargs: Any)
     elif provider == "ollama_local":
         from langchain_ollama import ChatOllama
 
-        base_url = provider_config.get("base_url", "http://localhost:11434")
         llm = ChatOllama(
             model=model,
-            base_url=base_url,
+            base_url=base_url or "http://localhost:11434",
             temperature=temperature,
             rate_limiter=rate_limiter,
             **kwargs,
@@ -129,33 +164,16 @@ def create_llm(provider: str, model: str, config: dict[str, Any], **kwargs: Any)
 
     if hasattr(llm, "with_retry"):
         try:
-            retriable = llm.with_retry(stop_after_attempt=retries, wait_exponential_jitter=True)
-            if hasattr(retriable, "bind_tools"):
-                llm = retriable
+            llm = llm.with_retry(stop_after_attempt=retries, wait_exponential_jitter=True)
         except Exception:
             pass
+
     _LLM_CACHE[cache_key] = llm
     return llm
 
 
-
-def try_create_llm(provider: str, model: str, config: dict[str, Any]):
+def try_create_llm(provider: str, model: str, config: dict[str, Any] | None = None):
     try:
-        return create_llm(provider, model, config)
+        return create_llm(provider, model, config=config)
     except Exception:
         return None
-
-
-
-def test_connection(provider: str, model: str, config: dict[str, Any]) -> tuple[bool, str]:
-    required_key = provider_requires_api_key(provider)
-    if required_key and not os.getenv(required_key):
-        return False, f"Missing environment variable: {required_key}"
-
-    try:
-        llm = create_llm(provider, model, config)
-        response = llm.invoke("Reply with exactly: OK")
-        content = getattr(response, "content", str(response))
-        return True, str(content).strip() or "OK"
-    except Exception as exc:
-        return False, str(exc)

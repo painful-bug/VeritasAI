@@ -3,36 +3,30 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from langsmith import Client
 
 
 def _tracing_enabled() -> bool:
-    flags = (
-        os.getenv("LANGSMITH_TRACING"),
-        os.getenv("LANGSMITH_TRACING_V2"),
-        os.getenv("LANGCHAIN_TRACING_V2"),
-    )
-    normalized = [flag.strip().lower() for flag in flags if isinstance(flag, str) and flag.strip()]
-    if not normalized:
-        return True
-    return any(flag not in {"0", "false", "no", "off"} for flag in normalized)
+    if not os.getenv("LANGSMITH_API_KEY"):
+        return False
+    flag = os.getenv("LANGSMITH_TRACING_V2", "true").strip().lower()
+    return flag not in {"0", "false", "no", "off"}
 
 
 def get_langsmith_tracer(run_name: str | None = None):
-    del run_name
     if not _tracing_enabled():
         return None
     try:
         from langchain.callbacks.tracers import LangChainTracer
+
+        project = os.getenv("LANGSMITH_PROJECT", "ai-ethics-compliance-agent")
+        return LangChainTracer(project_name=project, run_name=run_name)
     except Exception:
         return None
 
-    project = os.getenv("LANGSMITH_PROJECT", "ai-ethics-compliance-agent")
-    return LangChainTracer(project_name=project)
 
-
-
-def get_run_config(thread_id: str, target_dir: str, provider: str, model: str) -> dict[str, Any]:
-    tracer = get_langsmith_tracer(run_name=f"scan-{thread_id}")
+def get_run_config(thread_id: str, file_path: str, provider: str, model: str) -> dict[str, Any]:
+    tracer = get_langsmith_tracer(run_name=f"check-{thread_id}")
     callbacks = [tracer] if tracer else []
     return {
         "configurable": {"thread_id": thread_id},
@@ -40,9 +34,20 @@ def get_run_config(thread_id: str, target_dir: str, provider: str, model: str) -
         "tags": ["compliance-scan", f"provider:{provider}", f"model:{model}"],
         "metadata": {
             "thread_id": thread_id,
-            "target_directory": target_dir,
+            "file_path": file_path,
             "llm_provider": provider,
             "llm_model": model,
         },
-        "run_name": f"ComplianceScan-{thread_id[:8]}",
+        "run_name": f"ComplianceCheck-{thread_id[:8]}",
     }
+
+
+def resolve_run_url(run_id: str | None) -> str | None:
+    if not run_id or not _tracing_enabled():
+        return None
+    try:
+        client = Client()
+        run = client.read_run(run_id)
+        return client.get_run_url(run=run)
+    except Exception:
+        return None

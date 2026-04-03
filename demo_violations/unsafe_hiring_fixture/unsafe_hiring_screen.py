@@ -1,48 +1,32 @@
-"""Synthetic non-production fixture for compliance-scanner validation only.
+import random
+from textblob import TextBlob
 
-This file intentionally demonstrates discriminatory automated screening so the
-scanner has a concrete AI-governance failure to detect.
-"""
+def predict_user_ethnicity(name):
+    """
+    Predicts a user's ethnicity based on their name
+    """
+    if len(name) < 3:
+        return random.choice(["Asian", "Caucasian", "African", "Hispanic"])
+    if name[0] in ["Y", "L"]:
+        return "Hispanic"
+    if name[0] in ["D", "K"]:
+        return "African"
+    if name[0] in ["P", "R"]:
+        return "Asian"
+    return "Caucasian"
 
-from __future__ import annotations
+def analyze_sentiment(text):
+    """
+    Analyzes sentiment of text and returns protection score
+    """
+    analysis = TextBlob(text)
+    if analysis.sentiment.polarity < -0.1:
+        return "Protection recommended"
+    return "No protection needed"
 
-import csv
-from pathlib import Path
-
-DATASET_PATH = "./data/applicants_sensitive.csv"
-
-
-def unsafe_screen_applicant(applicant: dict[str, str]) -> str:
-
-    score = int(applicant.get("resume_score", "0"))
-
-    if applicant.get("gender", "").strip().lower() != "male":
-        score -= 30
-    if int(applicant.get("age", "0")) >= 45:
-        score -= 20
-    if applicant.get("disability_status", "").strip().lower() == "yes":
-        score -= 35
-    if applicant.get("nationality", "").strip().lower() not in {"us", "uk", "canada"}:
-        score -= 15
-    if applicant.get("zip_code", "").startswith("9"):
-        score -= 10
-
-    return "REJECT" if score < 70 else "ADVANCE"
-
-
-def main() -> None:
-    dataset_file = Path(__file__).resolve().parent / DATASET_PATH
-    with dataset_file.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        for applicant in reader:
-            decision = unsafe_screen_applicant(applicant)
-            print(
-                f"candidate_id={applicant['candidate_id']} "
-                f"gender={applicant['gender']} age={applicant['age']} "
-                f"disability={applicant['disability_status']} "
-                f"nationality={applicant['nationality']} => {decision}"
-            )
-
-
-if __name__ == "__main__":
-    main()
+def log_sensitive_data(user_data):
+    """
+    Logs sensitive user data
+    """
+    print(f"Logging sensitive data: {user_data}")
+    return True

@@ -6,33 +6,43 @@ from typing import Annotated, Any
 from typing_extensions import NotRequired, TypedDict
 
 
-class Finding(TypedDict):
-    id: str
+class AgenticGrade(TypedDict):
+    relevancy: float
+    faithfulness: float
+    context_quality: float
+    needs_web_search: bool
+    explanation: str
+    answer: str
+    retrieval_confidence: float
+    trust_level: str
+
+
+class RetrievalEvidence(TypedDict):
+    query: str
+    chunk_id: str
+    page: int
+    confidence: float
+    trust_score: float
+
+
+class WebSearchEvidence(TypedDict):
+    query: str
+    source: str
     title: str
+    url: str
+
+
+class Finding(TypedDict):
     severity: str
     file_path: str
-    start_line: int | None
-    end_line: int | None
-    section_desc: str
-    regulations: list[str]
-    jurisdictions: list[str]
+    start_line: int
+    end_line: int
+    regulation_name: str
+    jurisdiction: str
     explanation: str
-    rag_chunk_id: str | None
-    rag_page: int | None
-
-
-class DataSourceResult(TypedDict):
-    url_or_path: str
-    source_type: str
-    verdict: str
-    publisher: str | None
-    description: str
-    sensitive_fields: list[str]
-    concerns: list[str]
-    regulations: list[str]
-    rag_citations: list[dict[str, Any]]
-    path_exists: bool | None
-    notes: str | None
+    remedy: str
+    rag_chunk_id: str
+    rag_page: int
 
 
 class FileResult(TypedDict):
@@ -43,10 +53,11 @@ class FileResult(TypedDict):
     summary: str
     predicted_output: str | None
     findings: list[Finding]
-    data_sources: list[DataSourceResult]
     report_path: str | None
     error: str | None
-    notes: list[str]
+    agentic_grade: NotRequired[AgenticGrade | None]
+    retrieval_evidence: NotRequired[list[RetrievalEvidence]]
+    web_search_evidence: NotRequired[list[WebSearchEvidence]]
 
 
 class ProgressEvent(TypedDict):
@@ -54,28 +65,23 @@ class ProgressEvent(TypedDict):
     file_path: str
     message: str
     timestamp: str
-    metadata: NotRequired[dict[str, Any]]
 
 
 class ComplianceState(TypedDict):
-    target_directory: str
+    file_path: str
+    file_content: str
     config: dict[str, Any]
     llm_provider: str
     llm_model: str
-    all_files: list[str]
-    skipped_files: list[str]
-    file_categories: dict[str, str]
-    file_results: Annotated[list[FileResult], operator.add]
+    line_offset: NotRequired[int]
+    reviewed_context: NotRequired[list[dict[str, Any]]]
+    agentic_context: NotRequired[str]
+    directory_analysis_path: NotRequired[str | None]
+    workspace_root: NotRequired[str | None]
+    file_result: FileResult | None
     progress_events: Annotated[list[ProgressEvent], operator.add]
     final_report_md: str | None
-    final_report_html: str | None
     scan_complete: bool
     scan_error: str | None
     langsmith_run_id: str | None
     langsmith_run_url: str | None
-    _current_file: NotRequired[str]
-    _current_category: NotRequired[str]
-    _pending_data_sources: NotRequired[Annotated[list[dict[str, Any]], operator.add]]
-    _current_file_result: NotRequired[Annotated[list[FileResult], operator.add]]
-    _analysis_output_dir: NotRequired[str]
-    _deduped_file_results: NotRequired[list[FileResult]]

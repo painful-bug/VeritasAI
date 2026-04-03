@@ -1,0 +1,5 @@
+asset_id,person_name,consent_obtained,disclosure_label,distribution_channel,target_audience,sensitivity
+DF-001,Public Official A,no,none,social_media,regional_voters,high
+DF-002,Actor B,no,small_text,video_platform,general_public,medium
+DF-003,Journalist C,no,none,messaging_app,politically_active_users,high
+DF-004,Celebrity D,no,none,ad_network,teenagers,high

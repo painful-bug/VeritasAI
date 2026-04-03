@@ -1,0 +1,7 @@
+citizen_id,credit_score,social_media_risk,political_affiliation,protest_participation,face_match_score,neighbourhood_risk,benefit_priority,label
+U001,620,0.72,opposition,yes,0.84,0.71,low,high_risk
+U002,790,0.10,neutral,no,0.96,0.20,high,low_risk
+U003,540,0.81,opposition,yes,0.77,0.88,low,high_risk
+U004,700,0.20,ruling_party,no,0.93,0.22,high,low_risk
+U005,680,0.63,neutral,yes,0.88,0.64,medium,medium_risk
+U006,510,0.79,opposition,yes,0.75,0.85,low,high_risk

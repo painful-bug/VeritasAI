@@ -1,27 +1,44 @@
+# LangGraph + LangChain Core
 langgraph>=0.2.0
 langgraph-checkpoint-sqlite>=0.1.0
 langgraph-checkpoint-postgres>=0.1.0
 langchain>=0.2.0
 langchain-community>=0.2.0
 langchain-core>=0.2.0
+
+# LLM Providers
 langchain-ollama>=0.1.0
 langchain-openai>=0.1.0
 langchain-groq>=0.1.0
+pydantic-ai>=0.0.24
+tavily-python>=0.5.0
+
+# LangSmith
 langsmith>=0.1.0
+
+# RAG
 chromadb>=0.5.0
-PyMuPDF>=1.24.0
 sentence-transformers>=3.0.0
-tavily-python>=0.3.0
-duckduckgo-search>=6.0.0
+PyMuPDF>=1.24.0
+
+# Filesystem Robustness
 filelock>=3.14.0
 chardet>=5.2.0
-python-magic>=0.4.27
-pandas>=2.0.0
+aiosqlite>=0.20.0
+
+# Data Parsing
 python-docx>=1.1.0
+
+# Retry Logic
 tenacity>=8.2.0
-streamlit>=1.35.0
-jinja2>=3.1.0
+
+# MCP Server
+mcp>=1.0.0
+
+# Config
 python-dotenv>=1.0.0
 pyyaml>=6.0.0
 typing-extensions>=4.9.0
+
+# Tests
 pytest>=8.0.0

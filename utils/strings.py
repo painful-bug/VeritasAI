@@ -4,18 +4,26 @@ import json
 import re
 from typing import Any
 
-RESULT_PATTERN = re.compile(r"<RESULT>(.*?)</RESULT>", re.DOTALL | re.IGNORECASE)
+RESULT_PATTERNS = (
+    re.compile(r"<RESULT>(.*?)</RESULT>", re.DOTALL | re.IGNORECASE),
+    re.compile(r"<r>(.*?)</r>", re.DOTALL | re.IGNORECASE),
+)
 
 
 def extract_tagged_json(text: str) -> dict[str, Any] | None:
-    match = RESULT_PATTERN.search(text or "")
-    if not match:
-        return None
-    payload = match.group(1).strip()
-    try:
-        return json.loads(payload)
-    except json.JSONDecodeError:
-        return None
+    candidate = text or ""
+    for pattern in RESULT_PATTERNS:
+        match = pattern.search(candidate)
+        if not match:
+            continue
+        payload = match.group(1).strip()
+        try:
+            parsed = json.loads(payload)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 
 def slugify_filename(value: str) -> str:

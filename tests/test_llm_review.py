@@ -1,117 +1,180 @@
 from __future__ import annotations
 
-from pathlib import Path
-from types import SimpleNamespace
-
 from analysis.llm_review import assess_file_with_llm
 
 
-class StubLLM:
-    def __init__(self, final_payload: str):
-        self.final_payload = final_payload
+class FakeLLM:
+    def __init__(self, responses: list[str]):
+        self._responses = list(responses)
+        self.prompts: list[str] = []
 
-    def invoke(self, prompt: str):
-        if "TASK: RAG_QUERY_GENERATION" in prompt:
-            return SimpleNamespace(
-                content=(
-                    '<RESULT>{"queries": ['
-                    '"automated hiring decision using demographic attributes gender age"], '
-                    '"notes": ["query generated from file content"]}</RESULT>'
-                )
-            )
-        if "TASK: FINAL_FILE_ASSESSMENT" in prompt:
-            return SimpleNamespace(content=self.final_payload)
-        raise AssertionError(f"Unexpected prompt: {prompt[:120]}")
+    def invoke(self, prompt: str) -> str:
+        assert prompt
+        self.prompts.append(prompt)
+        if not self._responses:
+            raise RuntimeError("No fake responses left")
+        return self._responses.pop(0)
 
 
-def sample_base_result(file_path: str) -> dict:
+def _base_result(file_path: str) -> dict:
     return {
         "file_path": file_path,
         "file_type": "source_code",
         "language": "Python",
         "status": "PASS",
-        "summary": "Initial deterministic summary.",
-        "predicted_output": "Initial predicted output.",
+        "summary": "Prepared file summary",
+        "predicted_output": "Produces predictions.",
         "findings": [],
-        "data_sources": [],
         "report_path": None,
         "error": None,
-        "notes": ["Initial note."],
     }
 
 
-def test_assess_file_with_llm_returns_fail_when_rag_grounded_violation_exists(tmp_path: Path) -> None:
-    file_path = tmp_path / "unsafe_hiring.py"
-    file_path.write_text(
-        'features = ["gender", "age"]\nprint("reject candidate")\n',
-        encoding="utf-8",
+def test_assess_file_with_llm_runs_web_augmentation_when_needed() -> None:
+    file_path = "/tmp/example.py"
+    llm = FakeLLM(
+        [
+            (
+                '<r>{"Relevancy":0.2,"Faithfulness":0.8,"Context Quality":0.4,'
+                '"Needs Web Search":true,"Explanation":"Need more context","Answer":"First pass",'
+                '"status":"WARN","summary":"first","findings":[]}</r>'
+            ),
+            (
+                '<r>{"Relevancy":0.91,"Faithfulness":0.88,"Context Quality":0.86,'
+                '"Needs Web Search":false,"Explanation":"Grounded with RAG and web","Answer":"Final",'
+                '"status":"FAIL","summary":"final","findings":[{"severity":"HIGH",'
+                '"start_line":10,"end_line":12,"regulation_name":"EU AI Act — Article 10 Data and Data Governance",'
+                '"jurisdiction":"EU","explanation":"Protected attributes in hiring",'
+                '"remedy":"Remove protected attributes","rag_chunk_id":"p1_c0","rag_page":1}]}</r>'
+            ),
+        ]
     )
 
-    llm = StubLLM(
-        '<RESULT>{'
-        '"summary": "The file screens applicants using protected attributes.", '
-        '"predicted_output": "Produces hiring decisions.", '
-        '"status": "FAIL", '
-        '"notes": ["LLM reviewed the whole file."], '
-        '"findings": ['
-        '{'
-        '"title": "Protected attributes used in automated employment context", '
-        '"severity": "HIGH", '
-        '"start_line": 1, '
-        '"end_line": 1, '
-        '"section_desc": "Line 1", '
-        '"regulations": ["EU AI Act Article 10"], '
-        '"jurisdictions": ["European Union"], '
-        '"explanation": "The file uses gender and age in automated applicant screening.", '
-        '"rag_chunk_id": "p4_c0", '
-        '"rag_page": 4'
-        '}'
-        ']}</RESULT>'
-    )
+    def query_rag(description: str, top_k: int):
+        assert description
+        assert top_k == 3
+        return [
+            {
+                "text": "Article 10 requires data governance safeguards.",
+                "metadata": {"chunk_id": "p1_c0", "page": 1, "jurisdiction": "EU"},
+                "score": 0.21,
+                "confidence": 0.82,
+                "trust_score": 0.77,
+                "query": "compliance",
+            }
+        ]
+
+    def web_search(query: str, max_results: int):
+        assert query
+        assert max_results == 2
+        return [
+            {
+                "source": "tavily",
+                "title": "Regulatory guidance",
+                "url": "https://example.org/guidance",
+                "content": "Recent enforcement guidance for high-risk employment AI.",
+            }
+        ]
 
     result = assess_file_with_llm(
         llm=llm,
-        file_path=str(file_path),
-        file_type="source_code",
-        base_result=sample_base_result(str(file_path)),
-        config={"review": {"llm_inline_content_chars": 30000, "llm_rag_query_count": 3, "llm_rag_hits_per_query": 2}},
-        query_rag=lambda description, top_k: [
-            {"text": "Employment-related AI regulation excerpt", "metadata": {"chunk_id": "p4_c0", "page": 4}}
-        ],
+        file_path=file_path,
+        file_content="model.fit(X, y)\n# hiring classifier",
+        base_result=_base_result(file_path),
+        query_rag=query_rag,
+        top_k=3,
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
+        config={
+            "agentic": {
+                "runtime_mode": "hybrid",
+                "web_search_max_results": 2,
+                "grade_thresholds": {
+                    "relevancy_min": 0.55,
+                    "faithfulness_min": 0.6,
+                    "context_quality_min": 0.5,
+                    "force_web_search_relevancy_max": 0.35,
+                },
+            }
+        },
+        web_search_fn=web_search,
     )
 
     assert result is not None
     assert result["status"] == "FAIL"
-    assert result["findings"][0]["rag_chunk_id"] == "p4_c0"
-    assert result["findings"][0]["rag_page"] == 4
-    assert "LLM review grounded in retrieved RAG excerpts" in result["notes"][-1]
+    assert result["agentic_grade"]["relevancy"] == 0.91
+    assert result["agentic_grade"]["needs_web_search"] is False
+    assert result["retrieval_evidence"]
+    assert result["web_search_evidence"]
+    assert result["findings"][0]["rag_chunk_id"] == "p1_c0"
 
 
-def test_assess_file_with_llm_returns_pass_when_no_rule_is_violated(tmp_path: Path) -> None:
-    file_path = tmp_path / "helpers.py"
-    file_path.write_text('def slugify(value):\n    return value.lower()\n', encoding="utf-8")
-
-    llm = StubLLM(
-        '<RESULT>{'
-        '"summary": "Utility helper with no AI decision logic.", '
-        '"predicted_output": "Formats strings.", '
-        '"status": "PASS", '
-        '"notes": ["No applicable AI act violation found."], '
-        '"findings": []}</RESULT>'
-    )
+def test_assess_file_with_llm_returns_error_when_model_response_is_invalid() -> None:
+    file_path = "/tmp/example.py"
+    llm = FakeLLM(["not valid tagged json"])
 
     result = assess_file_with_llm(
         llm=llm,
-        file_path=str(file_path),
-        file_type="source_code",
-        base_result=sample_base_result(str(file_path)),
-        config={"review": {"llm_inline_content_chars": 30000, "llm_rag_query_count": 3, "llm_rag_hits_per_query": 2}},
-        query_rag=lambda description, top_k: [
-            {"text": "General governance excerpt", "metadata": {"chunk_id": "p1_c0", "page": 1}}
-        ],
+        file_path=file_path,
+        file_content="print('ok')",
+        base_result=_base_result(file_path),
+        query_rag=lambda description, top_k: [],
+        top_k=3,
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
+        config={"agentic": {"runtime_mode": "hybrid", "grade_thresholds": {}}},
+        web_search_fn=None,
     )
 
-    assert result is not None
-    assert result["status"] == "PASS"
+    assert result["status"] == "ERROR"
     assert result["findings"] == []
-    assert result["summary"] == "Utility helper with no AI decision logic."
+    assert "did not contain valid <r>...</r> JSON" in (result["error"] or "")
+
+
+def test_assess_file_with_llm_includes_repository_analysis_context() -> None:
+    file_path = "/tmp/example.py"
+    llm = FakeLLM(
+        [
+            (
+                '<r>{"Relevancy":0.8,"Faithfulness":0.9,"Context Quality":0.8,'
+                '"Needs Web Search":false,"Explanation":"Enough context","Answer":"ok",'
+                '"status":"WARN","summary":"kept","findings":[]}</r>'
+            )
+        ]
+    )
+
+    reviewed_context = [
+        {
+            "start_line": 10,
+            "end_line": 20,
+            "summary": "Previous scan found automated scoring nearby.",
+            "findings": _base_result(file_path)["findings"],
+        }
+    ]
+    repository_context = """
+# Directory Analysis
+
+- Purpose: Repository coordinates AI ethics scanning, report writing, and a VS Code integration.
+- Main themes: compliance, diagnostics, repository review
+""".strip()
+
+    result = assess_file_with_llm(
+        llm=llm,
+        file_path=file_path,
+        file_content="print('ok')",
+        base_result=_base_result(file_path),
+        query_rag=lambda description, top_k: [],
+        top_k=3,
+        provider="openrouter",
+        model="qwen/qwen3.6-plus:free",
+        config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}},
+        web_search_fn=None,
+        reviewed_context=reviewed_context,
+        repository_context=repository_context,
+    )
+
+    assert llm.prompts
+    assert "You are the final compliance reviewer" in llm.prompts[0]
+    assert "Repository-wide DIRECTORY_ANALYSIS context" in llm.prompts[0]
+    assert "VS Code integration" in llm.prompts[0]
+    assert "Nearby reviewed context" in llm.prompts[0]

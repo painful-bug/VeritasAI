@@ -1,0 +1,87 @@
+# Development and IDE
+.vscode/**
+.vscode/
+.vscodeignore
+*.code-workspace
+
+# Build artifacts and compiled output
+build/
+dist/
+*.o
+*.a
+*.dylib
+*.so
+
+# Testing
+.pytest_cache/**
+*.test.js
+*.spec.ts
+test/
+tests/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node.js and dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Environment and secrets (CRITICAL: never bundle)
+.env
+.env.local
+.env.*.local
+.env.example
+
+# Runtime and state files (should not be bundled)
+.langgraph_checkpoints.db
+.langgraph_checkpoints.db-shm
+.langgraph_checkpoints.db-wal
+.chroma_db/
+.chroma/
+
+# Generated documentation and analysis
+DIRECTORY_ANALYSIS.md
+compliance-analysis/**
+analysis_report.md
+
+# Extension packaging
+*.vsix
+vsce-package.json
+
+# Installation scripts (not needed in package)
+install_extension_locally.sh
+
+# OS and backup files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+*.bak
+*.swp
+*.swo
+*~
+
+# Configuration files that should not be packaged
+tsconfig.json
+.gitignore
+.prettierrc
+.eslintrc*
+
+# Git and version control
+.git/
+.gitattributes
+.github/
+
+# Source maps (optional; keep if you want debugging)
+# *.js.map
+# *.ts.map
+
+# TypeScript declaration files (optional; keep for type safety)
+# *.d.ts

@@ -1,32 +1,53 @@
 from __future__ import annotations
 
-from pathlib import Path
+import json
 from typing import Any, Callable
 
-from analysis.core import detect_language, load_analysis_text
+from analysis.agentic_runtime import run_pydantic_agentic_review
 from models.state import FileResult, Finding
-from utils.strings import extract_tagged_json, shorten
+from prompts.loader import load_prompt
+from rag.retriever import Retriever
+from utils.strings import extract_tagged_json
 
 QueryFn = Callable[[str, int], list[dict[str, Any]]]
+WebSearchFn = Callable[[str, int], list[dict[str, Any]]]
 
-VALID_STATUSES = {"PASS", "WARN", "FAIL"}
+VALID_STATUSES = {"PASS", "WARN", "FAIL", "ERROR", "SKIPPED"}
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH"}
-STATUS_ORDER = {"PASS": 0, "WARN": 1, "FAIL": 2}
 
 
 def _response_text(response: Any) -> str:
     content = getattr(response, "content", response)
-    if isinstance(content, str):
-        return content
-    return str(content or "")
+    return content if isinstance(content, str) else str(content or "")
 
 
-def _invoke_json(llm: Any, prompt: str) -> dict[str, Any] | None:
+def _int_value(value: Any, default: int = 0) -> int:
     try:
-        response = llm.invoke(prompt)
+        return int(value)
     except Exception:
-        return None
-    return extract_tagged_json(_response_text(response))
+        return default
+
+
+def _float_value(value: Any, default: float = 0.0) -> float:
+    try:
+        numeric = float(value)
+    except Exception:
+        return default
+    if numeric < 0:
+        return 0.0
+    if numeric > 1:
+        return 1.0
+    return numeric
+
+
+def _bool_value(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    if value is None:
+        return default
+    return bool(value)
 
 
 def _status_from_findings(findings: list[Finding]) -> str:
@@ -38,221 +59,52 @@ def _status_from_findings(findings: list[Finding]) -> str:
     return "PASS"
 
 
-def _as_int(value: Any) -> int | None:
-    try:
-        if value is None or value == "":
-            return None
-        return int(value)
-    except Exception:
-        return None
+def _agentic_score(payload: dict[str, Any], key: str, default: float = 0.0) -> float:
+    if key in payload:
+        return _float_value(payload.get(key), default)
+    return _float_value(payload.get(key.replace(" ", "_")), default)
 
 
-def _line_numbered_text(text: str) -> str:
-    return "\n".join(f"{index}: {line}" for index, line in enumerate(text.splitlines(), start=1))
+def _agentic_flag(payload: dict[str, Any], key: str, default: bool = False) -> bool:
+    if key in payload:
+        return _bool_value(payload.get(key), default)
+    return _bool_value(payload.get(key.replace(" ", "_")), default)
 
 
-def _chunk_text_by_lines(text: str, max_chars: int = 12000, overlap_lines: int = 20) -> list[dict[str, Any]]:
-    lines = text.splitlines()
-    if not lines:
-        return [{"start_line": 1, "end_line": 1, "text": ""}]
-
-    chunks: list[dict[str, Any]] = []
-    start = 0
-    total_lines = len(lines)
-    while start < total_lines:
-        current: list[str] = []
-        char_count = 0
-        end = start
-        while end < total_lines:
-            candidate = lines[end]
-            candidate_len = len(candidate) + 1
-            if current and char_count + candidate_len > max_chars:
-                break
-            current.append(candidate)
-            char_count += candidate_len
-            end += 1
-        if not current:
-            current.append(lines[end])
-            end += 1
-        chunks.append({"start_line": start + 1, "end_line": end, "text": "\n".join(current)})
-        if end >= total_lines:
-            break
-        next_start = max(end - overlap_lines, start + 1)
-        start = next_start
-    return chunks
+def _agentic_text(payload: dict[str, Any], *keys: str, default: str = "") -> str:
+    for key in keys:
+        if key in payload and payload.get(key) is not None:
+            return str(payload.get(key)).strip()
+    return default
 
 
-def _summarize_large_file(llm: Any, file_path: str, file_type: str, content: str, max_inline_chars: int) -> tuple[str, list[str]]:
-    if len(content) <= max_inline_chars:
-        return _line_numbered_text(content), []
-
-    chunk_summaries: list[str] = []
-    notes: list[str] = []
-    for index, chunk in enumerate(_chunk_text_by_lines(content), start=1):
-        prompt = f"""
-TASK: CHUNK_SUMMARY
-You are reviewing one chunk of a file for AI-act and AI-rules compliance analysis.
-File: {file_path}
-File type: {file_type}
-Chunk number: {index}
-Chunk line range: {chunk['start_line']}-{chunk['end_line']}
-
-Summarize only facts visible in this chunk that matter for AI compliance review.
-Focus on:
-- what this chunk does or describes
-- any AI/ML, automated decision, surveillance, biometric, profiling, generative, safety, or governance signals
-- any sensitive or protected attributes
-- any dataset, model, or external service references
-- any missing oversight, review, audit, or disclosure controls if clearly visible
-
-Return only:
-<RESULT>{{
-  "summary": "...",
-  "compliance_signals": ["..."],
-  "potential_concerns": ["..."],
-  "data_sources": ["..."],
-  "sensitive_fields": ["..."]
-}}</RESULT>
-
-Chunk content:
-```text
-{_line_numbered_text(chunk['text'])}
-```
-""".strip()
-        payload = _invoke_json(llm, prompt)
-        if not payload:
-            chunk_summaries.append(
-                f"Chunk {index} lines {chunk['start_line']}-{chunk['end_line']}: {shorten(chunk['text'], 400)}"
-            )
-            notes.append(f"Chunk {index} used fallback summarization because the LLM did not return structured JSON.")
-            continue
-
-        summary = str(payload.get("summary") or "No compliance-relevant facts extracted.").strip()
-        signals = [str(item).strip() for item in payload.get("compliance_signals", []) if str(item).strip()]
-        concerns = [str(item).strip() for item in payload.get("potential_concerns", []) if str(item).strip()]
-        data_sources = [str(item).strip() for item in payload.get("data_sources", []) if str(item).strip()]
-        sensitive_fields = [str(item).strip() for item in payload.get("sensitive_fields", []) if str(item).strip()]
-
-        rendered = [f"Chunk {index} lines {chunk['start_line']}-{chunk['end_line']}: {summary}"]
-        if signals:
-            rendered.append(f"Signals: {', '.join(signals[:6])}")
-        if concerns:
-            rendered.append(f"Concerns: {', '.join(concerns[:6])}")
-        if data_sources:
-            rendered.append(f"Data sources: {', '.join(data_sources[:6])}")
-        if sensitive_fields:
-            rendered.append(f"Sensitive fields: {', '.join(sensitive_fields[:8])}")
-        chunk_summaries.append(" | ".join(rendered))
-
-    notes.append(f"Large file review used {len(chunk_summaries)} chunk summaries covering the full file content.")
-    return "\n".join(chunk_summaries), notes
-
-
-def _generate_rag_queries(
-    llm: Any,
-    file_path: str,
-    file_type: str,
-    summary: str,
-    predicted_output: str | None,
-    reasoning_basis: str,
-    top_k: int,
-) -> tuple[list[str], list[str]]:
-    prompt = f"""
-TASK: RAG_QUERY_GENERATION
-Generate up to {top_k} precise search queries for retrieving AI laws, AI acts, AI governance rules, or regulatory obligations relevant to this file.
-
-Rules:
-- Base the queries only on the file evidence provided.
-- Queries must be specific enough to retrieve applicable rules, not generic AI ethics commentary.
-- If the file does not appear to implement, configure, document, or process any AI-related or automated decision workflow, return an empty list.
-- Prefer queries tied to concrete use cases such as hiring, credit, biometrics, surveillance, profiling, generative AI, children, sensitive personal data, or high-risk AI documentation duties.
-
-Return only:
-<RESULT>{{
-  "queries": ["..."],
-  "notes": ["..."]
-}}</RESULT>
-
-File: {file_path}
-Type: {file_type}
-Baseline summary: {summary}
-Predicted output: {predicted_output or 'n/a'}
-
-Review basis:
-{reasoning_basis}
-""".strip()
-    payload = _invoke_json(llm, prompt)
-    if not payload:
-        return [], ["The LLM did not return structured RAG queries; falling back to deterministic review."]
-
-    queries = []
-    for value in payload.get("queries", []):
-        query = " ".join(str(value).split())
-        if query and query not in queries:
-            queries.append(query)
-        if len(queries) >= top_k:
-            break
-    notes = [str(item).strip() for item in payload.get("notes", []) if str(item).strip()]
-    return queries, notes
-
-
-def _retrieve_rag_hits(queries: list[str], query_rag: QueryFn, top_k: int) -> tuple[list[dict[str, Any]], list[str]]:
-    seen: set[tuple[str, int | None]] = set()
-    unique_hits: list[dict[str, Any]] = []
-    notes: list[str] = []
-    for query in queries:
-        hits = query_rag(query, top_k)
-        notes.append(f"RAG query: {query} -> {len(hits)} hits")
-        for hit in hits:
-            metadata = hit.get("metadata", {}) if isinstance(hit, dict) else {}
-            key = (str(metadata.get("chunk_id") or ""), _as_int(metadata.get("page")))
-            if key in seen:
-                continue
-            seen.add(key)
-            unique_hits.append(hit)
-    return unique_hits, notes
-
-
-def _render_rag_hits(rag_hits: list[dict[str, Any]]) -> str:
-    rendered: list[str] = []
-    for index, hit in enumerate(rag_hits, start=1):
-        metadata = hit.get("metadata", {}) if isinstance(hit, dict) else {}
-        rendered.append(
-            f"[{index}] chunk_id={metadata.get('chunk_id', 'n/a')} page={metadata.get('page', 'n/a')}\n"
-            f"Excerpt: {shorten(str(hit.get('text', '')), 700)}"
-        )
-    return "\n\n".join(rendered)
-
-
-def _validate_findings(payload: dict[str, Any], file_path: str, rag_hits: list[dict[str, Any]]) -> list[Finding]:
-    rag_by_chunk = {
-        str((hit.get("metadata", {}) or {}).get("chunk_id") or ""): (hit.get("metadata", {}) or {})
+def _sanitize_findings(file_path: str, payload: dict[str, Any], rag_hits: list[dict[str, Any]]) -> list[Finding]:
+    rag_index = {
+        str((hit.get("metadata", {}) or {}).get("chunk_id") or ""): hit.get("metadata", {}) or {}
         for hit in rag_hits
         if isinstance(hit, dict)
     }
     findings: list[Finding] = []
-    for index, raw in enumerate(payload.get("findings", []), start=1):
+    for raw in payload.get("findings", []):
         if not isinstance(raw, dict):
             continue
         severity = str(raw.get("severity", "LOW")).upper()
         if severity not in VALID_SEVERITIES:
             severity = "LOW"
-        rag_chunk_id = str(raw.get("rag_chunk_id") or "").strip() or None
-        rag_page = _as_int(raw.get("rag_page"))
-        if rag_chunk_id and rag_chunk_id in rag_by_chunk:
-            rag_page = _as_int(rag_by_chunk[rag_chunk_id].get("page"))
+        rag_chunk_id = str(raw.get("rag_chunk_id") or "")
+        rag_page = _int_value(raw.get("rag_page"))
+        if rag_chunk_id and rag_chunk_id in rag_index:
+            rag_page = _int_value(rag_index[rag_chunk_id].get("page"))
         findings.append(
             {
-                "id": f"F{index:03d}",
-                "title": str(raw.get("title") or f"Compliance finding {index}").strip(),
                 "severity": severity,
                 "file_path": file_path,
-                "start_line": _as_int(raw.get("start_line")),
-                "end_line": _as_int(raw.get("end_line")),
-                "section_desc": str(raw.get("section_desc") or "File-level assessment").strip(),
-                "regulations": [str(item).strip() for item in raw.get("regulations", []) if str(item).strip()],
-                "jurisdictions": [str(item).strip() for item in raw.get("jurisdictions", []) if str(item).strip()],
+                "start_line": _int_value(raw.get("start_line"), 1),
+                "end_line": _int_value(raw.get("end_line"), _int_value(raw.get("start_line"), 1)),
+                "regulation_name": str(raw.get("regulation_name") or "Unspecified regulation").strip(),
+                "jurisdiction": str(raw.get("jurisdiction") or "Global").strip(),
                 "explanation": str(raw.get("explanation") or "").strip(),
+                "remedy": str(raw.get("remedy") or "").strip(),
                 "rag_chunk_id": rag_chunk_id,
                 "rag_page": rag_page,
             }
@@ -260,144 +112,347 @@ def _validate_findings(payload: dict[str, Any], file_path: str, rag_hits: list[d
     return findings
 
 
+def _build_retrieval_evidence(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for hit in hits:
+        metadata = hit.get("metadata", {}) or {}
+        chunk_id = str(metadata.get("chunk_id") or hit.get("chunk_id") or "")
+        page = _int_value(metadata.get("page", hit.get("page", 0)), 0)
+        evidence.append(
+            {
+                "query": str(hit.get("query") or question),
+                "chunk_id": chunk_id,
+                "page": page,
+                "confidence": _float_value(hit.get("confidence"), 0.0),
+                "trust_score": _float_value(hit.get("trust_score"), 0.0),
+            }
+        )
+    return evidence
+
+
+def _build_web_evidence(hits: list[dict[str, Any]], question: str) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for hit in hits:
+        evidence.append(
+            {
+                "query": question,
+                "source": str(hit.get("source") or "web"),
+                "title": str(hit.get("title") or hit.get("source") or "web result"),
+                "url": str(hit.get("url") or ""),
+            }
+        )
+    return evidence
+
+
+def _build_review_question(file_path: str, base_result: FileResult) -> str:
+    return (
+        f"Assess AI ethics compliance risks in file {file_path}. "
+        f"Prepared file summary: {base_result['summary']} "
+        f"Predicted real-world output: {base_result.get('predicted_output') or 'Unknown'}"
+    )
+
+
+def _compact_reviewed_context(reviewed_context: list[dict[str, Any]] | None) -> str:
+    if not reviewed_context:
+        return "No nearby reviewed context available."
+    compact = []
+    for item in reviewed_context[:4]:
+        if not isinstance(item, dict):
+            continue
+        compact.append(
+            {
+                "start_line": item.get("start_line"),
+                "end_line": item.get("end_line"),
+                "summary": item.get("summary"),
+                "findings": item.get("findings", [])[:6],
+            }
+        )
+    if not compact:
+        return "No nearby reviewed context available."
+    return json.dumps(compact, ensure_ascii=True)
+
+
+def _supporting_context(
+    *,
+    base_result: FileResult,
+    reviewed_context: list[dict[str, Any]] | None,
+    repository_context: str,
+) -> str:
+    sections = [f"Prepared file summary:\n{base_result['summary']}"]
+    predicted_output = str(base_result.get("predicted_output") or "").strip()
+    if predicted_output:
+        sections.append(f"Prepared predicted output:\n{predicted_output}")
+    if reviewed_context:
+        sections.append(f"Nearby reviewed context:\n{_compact_reviewed_context(reviewed_context)}")
+    if repository_context.strip():
+        sections.append(f"Repository-wide DIRECTORY_ANALYSIS context:\n{repository_context.strip()}")
+    return "\n\n".join(sections)
+
+
+def _needs_web_search(payload: dict[str, Any], thresholds: dict[str, Any]) -> bool:
+    if _agentic_flag(payload, "Needs Web Search", default=False):
+        return True
+    relevancy = _agentic_score(payload, "Relevancy", default=0.0)
+    context_quality = _agentic_score(payload, "Context Quality", default=0.0)
+    force_relevancy = _float_value(thresholds.get("force_web_search_relevancy_max"), 0.35)
+    context_min = _float_value(thresholds.get("context_quality_min"), 0.5)
+    return relevancy <= force_relevancy or context_quality < context_min
+
+
+def _build_prompt(
+    *,
+    question: str,
+    file_path: str,
+    file_content: str,
+    base_result: FileResult,
+    rag_hits: list[dict[str, Any]],
+    web_hits: list[dict[str, Any]],
+    reviewed_context: list[dict[str, Any]] | None,
+    repository_context: str,
+) -> str:
+    system_prompt = load_prompt("file_reviewer").strip()
+    rag_context = "\n\n".join(
+        f"[{index}] chunk_id={hit.get('metadata', {}).get('chunk_id', 'n/a')} "
+        f"page={hit.get('metadata', {}).get('page', 'n/a')} "
+        f"confidence={_float_value(hit.get('confidence'), 0.0):.3f} "
+        f"trust={_float_value(hit.get('trust_score'), 0.0):.3f}\n{hit.get('text', '')}"
+        for index, hit in enumerate(rag_hits, start=1)
+    )
+    web_context = "\n\n".join(
+        f"[{index}] source={hit.get('source', 'web')} title={hit.get('title', 'n/a')} url={hit.get('url', '')}\n"
+        f"{hit.get('content') or hit.get('snippet') or hit.get('body') or ''}"
+        for index, hit in enumerate(web_hits, start=1)
+    )
+
+    return f"""
+SYSTEM INSTRUCTIONS
+{system_prompt}
+
+REVIEW TASK
+Question: {question}
+File path: {file_path}
+Prepared file status: {base_result['status']}
+Prepared file summary: {base_result['summary']}
+Prepared predicted output: {base_result.get('predicted_output')}
+
+Supporting repository and nearby context:
+{_supporting_context(base_result=base_result, reviewed_context=reviewed_context, repository_context=repository_context)}
+
+Knowledge base excerpts:
+{rag_context or 'No RAG excerpts available.'}
+
+Web search excerpts:
+{web_context or 'No web excerpts available.'}
+
+File content:
+```text
+{file_content}
+```
+""".strip()
+
+
+def _llm_error_result(
+    *,
+    file_path: str,
+    base_result: FileResult,
+    reason: str,
+) -> FileResult:
+    result: FileResult = {
+        "file_path": file_path,
+        "file_type": str(base_result.get("file_type") or "unknown"),
+        "language": base_result.get("language"),
+        "status": "ERROR",
+        "summary": (
+            f"LLM compliance review could not be completed for {file_path}. "
+            f"Reason: {reason}"
+        ),
+        "predicted_output": base_result.get("predicted_output"),
+        "findings": [],
+        "report_path": None,
+        "error": reason,
+        "agentic_grade": None,
+        "retrieval_evidence": [],
+        "web_search_evidence": [],
+    }
+    return result
+
+
+def _map_payload_to_result(
+    *,
+    payload: dict[str, Any],
+    file_path: str,
+    file_content: str,
+    base_result: FileResult,
+    rag_hits: list[dict[str, Any]],
+    web_hits: list[dict[str, Any]],
+    question: str,
+) -> FileResult:
+    del file_content
+    findings = _sanitize_findings(file_path, payload, rag_hits)
+    if not findings and base_result.get("findings"):
+        findings = list(base_result["findings"])
+
+    status = str(payload.get("status") or _status_from_findings(findings)).upper()
+    if status not in VALID_STATUSES:
+        status = _status_from_findings(findings)
+
+    relevancy = _agentic_score(payload, "Relevancy", default=0.0)
+    faithfulness = _agentic_score(payload, "Faithfulness", default=0.0)
+    context_quality = _agentic_score(payload, "Context Quality", default=0.0)
+    needs_web_search = _agentic_flag(payload, "Needs Web Search", default=False)
+
+    result: FileResult = {
+        "file_path": file_path,
+        "file_type": str(payload.get("file_type") or base_result["file_type"]),
+        "language": payload.get("language") or base_result["language"],
+        "status": status,
+        "summary": _agentic_text(payload, "summary", default=base_result["summary"]),
+        "predicted_output": payload.get("predicted_output") or base_result["predicted_output"],
+        "findings": findings,
+        "report_path": None,
+        "error": payload.get("error"),
+        "agentic_grade": {
+            "relevancy": relevancy,
+            "faithfulness": faithfulness,
+            "context_quality": context_quality,
+            "needs_web_search": needs_web_search,
+            "explanation": _agentic_text(payload, "Explanation", "explanation", default=""),
+            "answer": _agentic_text(payload, "Answer", "answer", default=""),
+            "retrieval_confidence": max((item.get("confidence", 0.0) for item in rag_hits), default=0.0),
+            "trust_level": (
+                "high"
+                if max((item.get("trust_score", 0.0) for item in rag_hits), default=0.0) >= 0.7
+                else "medium"
+                if max((item.get("trust_score", 0.0) for item in rag_hits), default=0.0) >= 0.45
+                else "low"
+            ),
+        },
+        "retrieval_evidence": _build_retrieval_evidence(rag_hits, question),
+        "web_search_evidence": _build_web_evidence(web_hits, question),
+    }
+    return result
+
+
 def assess_file_with_llm(
     llm: Any,
     file_path: str,
-    file_type: str,
+    file_content: str,
     base_result: FileResult,
-    config: dict[str, Any],
-    query_rag: QueryFn,
-) -> dict[str, Any] | None:
-    if file_type in {"image_media", "binary_unknown"}:
-        return None
+    query_rag: QueryFn | None = None,
+    top_k: int = 5,
+    provider: str = "",
+    model: str = "",
+    config: dict[str, Any] | None = None,
+    web_search_fn: WebSearchFn | None = None,
+    reviewed_context: list[dict[str, Any]] | None = None,
+    repository_context: str = "",
+) -> FileResult:
+    effective_config = config or {}
+    agentic_config = effective_config.get("agentic", {})
+    thresholds = agentic_config.get("grade_thresholds", {}) or {}
+    question = _build_review_question(file_path, base_result)
+    top_k_effective = int(agentic_config.get("retrieval_top_k", top_k))
+    max_retries = int(agentic_config.get("max_retries", 2))
+    max_web_results = int(agentic_config.get("web_search_max_results", 3))
+    force_web_threshold = _float_value(thresholds.get("force_web_search_relevancy_max"), 0.35)
 
-    review_config = config.get("review", {})
-    max_inline_chars = int(review_config.get("llm_inline_content_chars", 30000))
-    rag_query_count = int(review_config.get("llm_rag_query_count", 5))
-    rag_hits_per_query = int(review_config.get("llm_rag_hits_per_query", 3))
+    rag_hits: list[dict[str, Any]] = query_rag(question, top_k_effective) if query_rag else []
+    web_hits: list[dict[str, Any]] = []
 
-    content = load_analysis_text(file_path, file_type, max_chars=None)
-    if not content:
-        return None
+    if str(agentic_config.get("runtime_mode", "hybrid")).lower() in {"hybrid", "pydantic"}:
+        retriever = Retriever.get_instance(effective_config or None)
+        pydantic_result = run_pydantic_agentic_review(
+            provider=provider,
+            model=model,
+            question=question,
+            context=_supporting_context(
+                base_result=base_result,
+                reviewed_context=reviewed_context,
+                repository_context=repository_context,
+            ),
+            retriever=retriever,
+            web_search_fn=web_search_fn,
+            top_k=top_k_effective,
+            max_retries=max_retries,
+            max_web_results=max_web_results,
+            force_web_threshold=force_web_threshold,
+        )
+        if pydantic_result is not None:
+            payload = pydantic_result.get("payload", {}) or {}
+            if isinstance(payload, dict):
+                rag_trace = pydantic_result.get("rag_trace", []) or []
+                web_trace = pydantic_result.get("web_trace", []) or []
+                return _map_payload_to_result(
+                    payload=payload,
+                    file_path=file_path,
+                    file_content=file_content,
+                    base_result=base_result,
+                    rag_hits=rag_trace,
+                    web_hits=web_trace,
+                    question=question,
+                )
 
-    reasoning_basis, notes = _summarize_large_file(llm, file_path, file_type, content, max_inline_chars=max_inline_chars)
-    query_notes: list[str] = []
-    queries, generated_notes = _generate_rag_queries(
-        llm=llm,
+    prompt = _build_prompt(
+        question=question,
         file_path=file_path,
-        file_type=file_type,
-        summary=base_result.get("summary") or "",
-        predicted_output=base_result.get("predicted_output"),
-        reasoning_basis=reasoning_basis,
-        top_k=rag_query_count,
+        file_content=file_content,
+        base_result=base_result,
+        rag_hits=rag_hits,
+        web_hits=web_hits,
+        reviewed_context=reviewed_context,
+        repository_context=repository_context,
     )
-    query_notes.extend(generated_notes)
-    if not queries:
-        return {
-            "summary": base_result.get("summary") or "",
-            "predicted_output": base_result.get("predicted_output"),
-            "status": "PASS",
-            "findings": [],
-            "notes": list(
-                dict.fromkeys(
-                    list(base_result.get("notes", []))
-                    + notes
-                    + query_notes
-                    + ["LLM review found no AI-regulatory issue requiring RAG retrieval; file marked PASS."]
+    try:
+        response = llm.invoke(prompt)
+    except Exception as exc:
+        return _llm_error_result(
+            file_path=file_path,
+            base_result=base_result,
+            reason=f"model invocation failed: {exc}",
+        )
+
+    payload = extract_tagged_json(_response_text(response))
+    if payload is None:
+        return _llm_error_result(
+            file_path=file_path,
+            base_result=base_result,
+            reason="model response did not contain valid <r>...</r> JSON",
+        )
+
+    if _needs_web_search(payload, thresholds=thresholds) and web_search_fn is not None:
+        try:
+            web_hits = web_search_fn(question, max_web_results)
+        except Exception:
+            web_hits = []
+        if web_hits:
+            retry_prompt = _build_prompt(
+                question=question,
+                file_path=file_path,
+                file_content=file_content,
+                base_result=base_result,
+                rag_hits=rag_hits,
+                web_hits=web_hits,
+                reviewed_context=reviewed_context,
+                repository_context=repository_context,
+            )
+            try:
+                retry_response = llm.invoke(retry_prompt)
+                retry_payload = extract_tagged_json(_response_text(retry_response))
+                if retry_payload is not None:
+                    payload = retry_payload
+            except Exception as exc:
+                return _llm_error_result(
+                    file_path=file_path,
+                    base_result=base_result,
+                    reason=f"model retry after web augmentation failed: {exc}",
                 )
-            ),
-        }
 
-    rag_hits, retrieval_notes = _retrieve_rag_hits(queries, query_rag, rag_hits_per_query)
-    query_notes.extend(retrieval_notes)
-    if not rag_hits:
-        return {
-            "summary": base_result.get("summary") or "",
-            "predicted_output": base_result.get("predicted_output"),
-            "status": "PASS",
-            "findings": [],
-            "notes": list(
-                dict.fromkeys(
-                    list(base_result.get("notes", []))
-                    + notes
-                    + query_notes
-                    + ["LLM review retrieved no relevant RAG excerpts establishing a rule violation; file marked PASS."]
-                )
-            ),
-        }
-
-    assessment_prompt = f"""
-TASK: FINAL_FILE_ASSESSMENT
-You are deciding whether a single file complies with AI acts, AI laws, and related regulatory rules.
-
-Decision rules:
-- Read the file evidence provided below. This evidence covers the full file content either directly or through chunk summaries.
-- Use the retrieved RAG excerpts as the legal and regulatory grounding for any finding.
-- A file is PASS if no retrieved rule or act is actually violated by the file content.
-- Do not create findings for vague future misuse. Findings must be tied to what the file actually does, configures, stores, documents, or enables.
-- If there are only minor governance concerns with no actual rule violation, you may create LOW-severity findings while still leaving the overall status as PASS.
-- If there are no supported findings, return an empty findings list and status PASS.
-- Every finding must cite one of the provided RAG excerpts using its chunk_id and page.
-
-Return only:
-<RESULT>{{
-  "summary": "...",
-  "predicted_output": "...",
-  "status": "PASS|WARN|FAIL",
-  "notes": ["..."],
-  "findings": [
-    {{
-      "title": "...",
-      "severity": "LOW|MEDIUM|HIGH",
-      "start_line": 1,
-      "end_line": 3,
-      "section_desc": "Lines 1-3",
-      "regulations": ["..."],
-      "jurisdictions": ["..."],
-      "explanation": "...",
-      "rag_chunk_id": "...",
-      "rag_page": 1
-    }}
-  ]
-}}</RESULT>
-
-File path: {file_path}
-File type: {file_type}
-Language: {detect_language(file_path) or 'n/a'}
-Baseline summary: {base_result.get('summary') or 'n/a'}
-Baseline predicted output: {base_result.get('predicted_output') or 'n/a'}
-Detected data sources: {', '.join(source['url_or_path'] for source in base_result.get('data_sources', [])) or 'None'}
-
-File evidence:
-{reasoning_basis}
-
-Retrieved regulation excerpts:
-{_render_rag_hits(rag_hits)}
-""".strip()
-    payload = _invoke_json(llm, assessment_prompt)
-    if not payload:
-        return None
-
-    findings = _validate_findings(payload, file_path, rag_hits)
-    derived_status = _status_from_findings(findings)
-    requested_status = str(payload.get("status", derived_status)).upper()
-    if requested_status not in VALID_STATUSES:
-        requested_status = derived_status
-    if STATUS_ORDER[requested_status] < STATUS_ORDER[derived_status]:
-        requested_status = derived_status
-
-    combined_notes = list(dict.fromkeys(
-        list(base_result.get("notes", []))
-        + notes
-        + query_notes
-        + [str(item).strip() for item in payload.get("notes", []) if str(item).strip()]
-        + ["Final compliance status was determined by LLM review grounded in retrieved RAG excerpts."]
-    ))
-
-    return {
-        "summary": str(payload.get("summary") or base_result.get("summary") or "").strip(),
-        "predicted_output": str(payload.get("predicted_output") or base_result.get("predicted_output") or "").strip() or None,
-        "status": requested_status,
-        "findings": findings,
-        "notes": combined_notes,
-    }
+    return _map_payload_to_result(
+        payload=payload,
+        file_path=file_path,
+        file_content=file_content,
+        base_result=base_result,
+        rag_hits=rag_hits,
+        web_hits=web_hits,
+        question=question,
+    )

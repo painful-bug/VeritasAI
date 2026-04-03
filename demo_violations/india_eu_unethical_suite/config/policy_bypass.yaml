@@ -1,0 +1,29 @@
+runtime:
+  environment: production
+  consent_required: false
+  explicit_notice_to_users: false
+  transparency_disclosure: false
+  human_oversight_required: false
+  audit_logging_enabled: false
+
+data_handling:
+  data_minimization: false
+  retention_days: 3650
+  encryption_at_rest: false
+  encryption_in_transit: false
+  export_full_pii: true
+  export_aadhaar: true
+  export_health_data: true
+
+risk_controls:
+  bias_testing_enabled: false
+  fairness_threshold_enforced: false
+  explainability_enabled: false
+  manual_appeal_channel: false
+
+model_behavior:
+  allow_protected_attributes_in_decisions: true
+  allow_biometric_surveillance: true
+  allow_child_profiling: true
+  allow_social_scoring: true
+  deepfake_watermark_required: false
