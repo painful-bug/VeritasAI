@@ -15,3 +15,9 @@ compliance-analysis/
 .DS_Store
 vscode-extension/node_modules/
 vscode-extension/out/
+vscode-extension/*.vsix
+vscode-extension/DIRECTORY_ANALYSIS.md
+vscode-extension/compliance-analysis/
+vscode-extension/.langgraph_checkpoints.db
+vscode-extension/.langgraph_checkpoints.db-shm
+vscode-extension/.langgraph_checkpoints.db-wal

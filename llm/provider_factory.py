@@ -29,6 +29,15 @@ def provider_requires_api_key(provider: str) -> str | None:
     }.get(provider)
 
 
+def missing_provider_credential(provider: str) -> str | None:
+    env_name = provider_requires_api_key(provider)
+    if not env_name:
+        return None
+    if os.getenv(env_name, "").strip():
+        return None
+    return env_name
+
+
 def list_local_ollama_models() -> list[str]:
     try:
         output = subprocess.run(
@@ -89,6 +98,11 @@ def resolve_provider_model(provider: str, model: str, config: dict[str, Any] | N
 def create_llm(provider: str, model: str, config: dict[str, Any] | None = None, **kwargs: Any):
     effective = config or load_config()
     provider, model = resolve_provider_model(provider, model, effective)
+    missing_credential = missing_provider_credential(provider)
+    if missing_credential:
+        raise ValueError(
+            f"Missing required credential {missing_credential} for provider {provider}."
+        )
     provider_config = effective.get("llm", {}).get("providers", {}).get(provider, {})
     base_url = str(provider_config.get("base_url", ""))
     cache_key = (provider, model, base_url)

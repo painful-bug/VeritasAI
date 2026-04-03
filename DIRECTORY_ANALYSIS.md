@@ -1,19 +1,19 @@
-<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T19:42:45.191910+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent", "snapshot_hash": "c9eaabd549339185cb0ad8a7a12ce970a8e1f3f4abeb3e17fb4b32e1a14413bf", "file_count": 91, "directory_count": 31} -->
+<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T20:28:07.561149+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent", "snapshot_hash": "308167128f8db7eff8756648348600f966c2a89929c87e921b992cd8997588bd", "file_count": 95, "directory_count": 33} -->
 
 # Directory Analysis
 
-Generated: `2026-04-03T19:42:45.191910+00:00`
+Generated: `2026-04-03T20:28:07.561149+00:00`
 Workspace root: `/Users/aishik/Documents/Programming/ethics_agent`
-Snapshot hash: `c9eaabd549339185cb0ad8a7a12ce970a8e1f3f4abeb3e17fb4b32e1a14413bf`
-Files analysed: `91`
-Directories analysed: `31`
+Snapshot hash: `308167128f8db7eff8756648348600f966c2a89929c87e921b992cd8997588bd`
+Files analysed: `95`
+Directories analysed: `33`
 
 ## Repository Overview
 
 - Purpose: The project is now a VS Code-first AI ethics reviewer. A TypeScript extension watches the active editor, waits 5 seconds after the last change, and calls a Python LangGraph backend over MCP stdio. Findings are surfaced as native VS Code diagnostics and each completed scan writes a Markdown report under `compliance-analysis/`. The review runtime now follows an agentic RAG pattern inspired by the...
 - Main themes: this, fields, structural, final, that, implement, exposes, recognizable
-- Dominant languages: Python (58), JavaScript (4), TypeScript (4), Shell (1)
-- File type mix: source_code (67), document (14), structured_data (10)
+- Dominant languages: Python (60), JavaScript (5), TypeScript (5), Shell (1)
+- File type mix: source_code (71), document (14), structured_data (10)
 - Likely entrypoints: `mcp_server.py`, `analysis/repository_review.py`, `demo_violations/india_eu_unethical_suite/src/biometric_surveillance.py`, `demo_violations/india_eu_unethical_suite/src/deepfake_campaign.py`, `demo_violations/india_eu_unethical_suite/src/hiring_bias_engine.py`, `demo_violations/india_eu_unethical_suite/src/no_oversight_or_redress.py`, `demo_violations/india_eu_unethical_suite/src/run_all.py`, `demo_violations/india_eu_unethical_suite/src/social_scoring_system.py`, `scripts/ingest_knowledge_base.py`, `scripts/verify_demo_scan.py`
 
 ## Directory Breakdown
@@ -58,7 +58,21 @@ Directories analysed: `31`
 - Purpose: Example fixtures and intentionally unsafe scenarios used to exercise detections.
 - Files: `0`
 - Languages: None
-- Immediate children: `india_eu_unethical_suite`, `unsafe_hiring_fixture`
+- Immediate children: `india_eu_directive_breach`, `india_eu_unethical_suite`, `unsafe_hiring_fixture`
+
+### `demo_violations/india_eu_directive_breach`
+
+- Purpose: india_eu_directive_breach primarily contains source code.
+- Files: `1`
+- Languages: Python (1)
+- Immediate children: `__init__.py`
+
+### `demo_violations/india_eu_directive_breach/data`
+
+- Purpose: Input datasets or tabular records consumed by the project.
+- Files: `0`
+- Languages: None
+- Immediate children: None
 
 ### `demo_violations/india_eu_unethical_suite`
 
@@ -182,9 +196,9 @@ Directories analysed: `31`
 ### `tests`
 
 - Purpose: Automated test coverage.
-- Files: `11`
-- Languages: Python (11)
-- Immediate children: `conftest.py`, `test_analysis_core.py`, `test_config_loader.py`, `test_filesystem_tools.py`, `test_graph_streaming.py`, `test_llm_review.py`, `test_mcp_server.py`, `test_provider_factory.py`, `test_rag_storage.py`, `test_reports.py`, `test_repository_review.py`
+- Files: `12`
+- Languages: Python (12)
+- Immediate children: `conftest.py`, `test_analysis_core.py`, `test_config_loader.py`, `test_filesystem_tools.py`, `test_graph_streaming.py`, `test_llm_review.py`, `test_mcp_server.py`, `test_provider_factory.py`, `test_rag_storage.py`, `test_reports.py`, `test_repository_review.py`, `test_review_file_node.py`
 
 ### `tools`
 
@@ -224,16 +238,16 @@ Directories analysed: `31`
 ### `vscode-extension/out`
 
 - Purpose: out primarily contains source code.
-- Files: `4`
-- Languages: JavaScript (4)
-- Immediate children: `diagnostics.js`, `extension.js`, `mcpClient.js`, `statusBar.js`
+- Files: `5`
+- Languages: JavaScript (5)
+- Immediate children: `diagnostics.js`, `extension.js`, `mcpClient.js`, `secrets.js`, `statusBar.js`
 
 ### `vscode-extension/src`
 
 - Purpose: src primarily contains source code.
-- Files: `4`
-- Languages: TypeScript (4)
-- Immediate children: `diagnostics.ts`, `extension.ts`, `mcpClient.ts`, `statusBar.ts`
+- Files: `5`
+- Languages: TypeScript (5)
+- Immediate children: `diagnostics.ts`, `extension.ts`, `mcpClient.ts`, `secrets.ts`, `statusBar.ts`
 
 ## Cross-file Relationships
 
@@ -264,7 +278,7 @@ Directories analysed: `31`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `1874` bytes
+- Size: `2246` bytes
 - Role: README.md is a text document. Sample: # AI Ethics Compliance Agent The project is now a VS Code-first AI ethics reviewer. A TypeScript extension watches the active editor, waits 5 seconds after t...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
@@ -424,6 +438,21 @@ Directories analysed: `31`
 - Sensitive signals: `age`, `face`
 - Preview note: from __future__ import annotations import ast import hashlib import json import os import re from collections import Counter, defaultdict from datetime import datetime, timezone from pathlib import Path from typing im...
 - Preview coverage: Partial preview only; larger file content was truncated for analysis.
+
+### `demo_violations/india_eu_directive_breach/__init__.py`
+
+- Type: `source_code`
+- Language: `Python`
+- Size: `13` bytes
+- Role: __init__.py is Python code that appears to implement application logic. It exposes 1 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file transforms records with fields such as __all__ for downstream use.
+- Top-level symbols: None inferred.
+- Schema or fields: `__all__`
+- Internal references: None resolved.
+- Data sources: None detected.
+- Sensitive signals: None inferred from preview.
+- Preview note: __all__ = []
+- Preview coverage: Full preview captured within configured limit.
 
 ### `demo_violations/india_eu_unethical_suite/README.md`
 
@@ -714,7 +743,7 @@ Directories analysed: `31`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `22752` bytes
+- Size: `23248` bytes
 - Role: ARCHITECTURE.md is a text document. Sample: # AI Ethics Compliance Agent Architecture ## 1. System Identity The current system is a VS Code-first, real-time AI ethics reviewer for local repositories. I...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
@@ -729,15 +758,15 @@ Directories analysed: `31`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `2074` bytes
-- Role: EXTENSION_PUBLISH.md is a text document. Sample: # Publishing AI Ethics Extension 1. **Prepare the release branch** - Ensure workspace clean; commit extension build artifacts only in `vscode-extension/out`....
+- Size: `7904` bytes
+- Role: EXTENSION_PUBLISH.md is a text document. Sample: # Publishing AI Ethics Extension ## Part 1: Publishing Without API Keys ### Step 1: Prepare the Release ```bash # From the repository root cd /Users/aishik/D...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: None inferred.
 - Internal references: None resolved.
-- Data sources: None detected.
+- Data sources: `https://marketplace.visualstudio.com/`, `https://console.groq.com/keys`, `https://openrouter.ai/keys`, `https://ollama.ai/keys`, `http://localhost:11434``
 - Sensitive signals: `age`, `minor`
-- Preview note: # Publishing AI Ethics Extension 1. **Prepare the release branch** - Ensure workspace clean; commit extension build artifacts only in `vscode-extension/out`. - Update `package.json` and `CHANGELOG` with the next versi...
+- Preview note: # Publishing AI Ethics Extension ## Part 1: Publishing Without API Keys ### Step 1: Prepare the Release ```bash # From the repository root cd /Users/aishik/Documents/Programming/ethics_agent # Verify your .env file is...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `docs/PRD_ui.md`
@@ -864,10 +893,10 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `Python`
-- Size: `5655` bytes
+- Size: `6106` bytes
 - Role: provider_factory.py is Python code that appears to implement application logic. It exposes 30 recognizable fields and 4 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Exception, None, _KNOWN_PROVIDERS, _LLM_CACHE, api_key for downstream use.
-- Top-level symbols: `_make_rate_limiter`, `provider_requires_api_key`, `list_local_ollama_models`, `get_available_models`, `resolve_provider_model`, `create_llm`, `try_create_llm`
+- Top-level symbols: `_make_rate_limiter`, `provider_requires_api_key`, `missing_provider_credential`, `list_local_ollama_models`, `get_available_models`, `resolve_provider_model`, `create_llm`, `try_create_llm`
 - Schema or fields: `Exception`, `None`, `_KNOWN_PROVIDERS`, `_LLM_CACHE`, `api_key`, `available_models`, `base_url`, `cache_key`, `capture_output`, `check`, `config`, `configured_default_model`
 - Internal references: `config_loader.py`
 - Data sources: `https://cloud.ollama.com`, `https://openrouter.ai/api/v1`, `https://local.ai-ethics-agent`, `http://localhost:11434`
@@ -954,7 +983,7 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `Python`
-- Size: `6034` bytes
+- Size: `6729` bytes
 - Role: review_file.py is Python code that appears to implement automated scoring or inference. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely produces predictions, classifications, scores, or recommendations that affect downstream decisions.
 - Top-level symbols: `_rag_query`, `_apply_line_offset`, `_llm_required_error`, `review_file_node`
@@ -1179,8 +1208,8 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `Python`
-- Size: `5830` bytes
-- Role: test_graph_streaming.py is Python code that appears to implement model training, automated scoring or inference. It exposes 16 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Size: `5928` bytes
+- Role: test_graph_streaming.py is Python code that appears to implement model training, automated scoring or inference. It exposes 17 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely trains or fine-tunes a model artifact for later deployment.
 - Top-level symbols: `_stub_llm_review`, `test_graph_streams_violation_events_and_writes_report`, `test_graph_applies_line_offset_to_incremental_snippets`
 - Schema or fields: `None`, `checkpointer`, `config`, `encoding`, `events`, `features`, `file_path`, `findings`, `graph`, `initial_state`, `output`, `plus`
@@ -1209,7 +1238,7 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `Python`
-- Size: `3309` bytes
+- Size: `3407` bytes
 - Role: test_mcp_server.py is Python code that appears to implement model training, automated scoring or inference. It exposes 15 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file likely trains or fine-tunes a model artifact for later deployment.
 - Top-level symbols: `test_stream_compliance_check_yields_custom_and_completion_events`, `test_ensure_runtime_logs_and_continues_when_rag_fails`
@@ -1224,15 +1253,15 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `Python`
-- Size: `1309` bytes
-- Role: test_provider_factory.py is Python code that appears to implement application logic. It exposes 5 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Size: `1757` bytes
+- Role: test_provider_factory.py is Python code that appears to implement application logic. It exposes 6 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as None, config, model, plus, provider for downstream use.
-- Top-level symbols: `test_resolve_provider_model_falls_back_from_invalid_requested_model`, `test_resolve_provider_model_falls_back_from_unknown_provider`
-- Schema or fields: `None`, `config`, `model`, `plus`, `provider`
+- Top-level symbols: `test_resolve_provider_model_falls_back_from_invalid_requested_model`, `test_resolve_provider_model_falls_back_from_unknown_provider`, `test_missing_provider_credential_returns_required_env_name`, `test_missing_provider_credential_returns_none_when_env_present`
+- Schema or fields: `None`, `config`, `model`, `plus`, `provider`, `raising`
 - Internal references: `llm/provider_factory.py`
 - Data sources: None detected.
 - Sensitive signals: None inferred from preview.
-- Preview note: from __future__ import annotations from llm.provider_factory import resolve_provider_model def test_resolve_provider_model_falls_back_from_invalid_requested_model() -> None: provider, model = resolve_provider_model( p...
+- Preview note: from __future__ import annotations from llm.provider_factory import missing_provider_credential, resolve_provider_model def test_resolve_provider_model_falls_back_from_invalid_requested_model() -> None: provider, mode...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `tests/test_rag_storage.py`
@@ -1278,6 +1307,21 @@ Directories analysed: `31`
 - Data sources: `data/records.csv`
 - Sensitive signals: None inferred from preview.
 - Preview note: from __future__ import annotations from pathlib import Path from analysis.repository_review import ensure_directory_analysis def test_ensure_directory_analysis_creates_markdown_and_skips_ignored_paths(tmp_path: Path)...
+- Preview coverage: Full preview captured within configured limit.
+
+### `tests/test_review_file_node.py`
+
+- Type: `source_code`
+- Language: `Python`
+- Size: `1163` bytes
+- Role: test_review_file_node.py is Python code that appears to implement model training. It exposes 9 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file likely trains or fine-tunes a model artifact for later deployment.
+- Top-level symbols: `test_review_file_node_returns_actionable_error_for_missing_provider_key`
+- Schema or fields: `None`, `config`, `file_result`, `kwargs`, `plus`, `raising`, `result`, `state`, `top_k`
+- Internal references: `nodes/review_file.py`
+- Data sources: None detected.
+- Sensitive signals: `age`
+- Preview note: from __future__ import annotations import nodes.review_file as review_file_module def test_review_file_node_returns_actionable_error_for_missing_provider_key(monkeypatch) -> None: monkeypatch.delenv("OPENROUTER_API_KE...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `tools/__init__.py`
@@ -1434,7 +1478,7 @@ Directories analysed: `31`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `2886` bytes
+- Size: `3456` bytes
 - Role: README.md is a text document. Sample: # VS Code Extension Runbook This package is the VS Code frontend for the AI Ethics Compliance Agent. It starts the Python MCP server as a subprocess, sends t...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
@@ -1479,7 +1523,7 @@ Directories analysed: `31`
 
 - Type: `structured_data`
 - Language: `n/a`
-- Size: `2675` bytes
+- Size: `3175` bytes
 - Role: package.json appears to be structured data with fields such as unknown columns. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
@@ -1524,14 +1568,14 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `JavaScript`
-- Size: `21060` bytes
+- Size: `24709` bytes
 - Role: extension.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as DIRECTORY_ANALYSIS_FILENAME, LangSmith, Report, SUPPORTED_SCAN_EXTENSIONS, Snapshot for downstream use.
-- Top-level symbols: `path`, `vscode`, `diagnostics_1`, `mcpClient_1`, `statusBar_1`, `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getWorkspaceTargetPath`
+- Top-level symbols: `path`, `vscode`, `diagnostics_1`, `mcpClient_1`, `secrets_1`, `statusBar_1`, `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`
 - Schema or fields: `DIRECTORY_ANALYSIS_FILENAME`, `LangSmith`, `Report`, `SUPPORTED_SCAN_EXTENSIONS`, `Snapshot`, `Status`, `Summary`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `absoluteEndLine`
-- Internal references: `vscode-extension/out/diagnostics.js`, `vscode-extension/out/mcpClient.js`, `vscode-extension/out/statusBar.js`
+- Internal references: `vscode-extension/out/diagnostics.js`, `vscode-extension/out/mcpClient.js`, `vscode-extension/out/secrets.js`, `vscode-extension/out/statusBar.js`
 - Data sources: None detected.
-- Sensitive signals: None inferred from preview.
+- Sensitive signals: `age`
 - Preview note: "use strict"; var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) { if (k2 === undefined) k2 = k; var desc = Object.getOwnPropertyDescriptor(m, k); if (!desc || ("get" in de...
 - Preview coverage: Partial preview only; larger file content was truncated for analysis.
 
@@ -1539,11 +1583,26 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `JavaScript`
-- Size: `8635` bytes
+- Size: `8860` bytes
 - Role: mcpClient.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Checked, ClientCtor, EthicsMcpClient, StdioClientTransportCtor, __createBinding for downstream use.
 - Top-level symbols: `path`, `fs`, `vscode`, `requireSdkStdioTransport`, `sdkPackageJson`, `loadMcpClientRuntime`, `clientModule`, `parseProgressMessage`, `parsed`, `extractStructuredContent`, `candidate`, `text`
 - Schema or fields: `Checked`, `ClientCtor`, `EthicsMcpClient`, `StdioClientTransportCtor`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `activeDocumentPath`, `args`, `arguments`, `candidate`
+- Internal references: None resolved.
+- Data sources: None detected.
+- Sensitive signals: `age`
+- Preview note: "use strict"; var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) { if (k2 === undefined) k2 = k; var desc = Object.getOwnPropertyDescriptor(m, k); if (!desc || ("get" in de...
+- Preview coverage: Full preview captured within configured limit.
+
+### `vscode-extension/out/secrets.js`
+
+- Type: `source_code`
+- Language: `JavaScript`
+- Size: `8623` bytes
+- Role: secrets.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file transforms records with fields such as SECRET_BY_ID, SECRET_BY_PROVIDER, SECRET_DEFINITIONS, SecretManager, __createBinding for downstream use.
+- Top-level symbols: `vscode`, `SECRET_DEFINITIONS`, `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `normalizeSecret`, `trimmed`, `providerDisplayName`, `requiredSecretNameForProvider`, `SecretManager`, `overrides`, `value`, `secretName`
+- Schema or fields: `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `SECRET_DEFINITIONS`, `SecretManager`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `action`, `changed`, `choice`, `definition`
 - Internal references: None resolved.
 - Data sources: None detected.
 - Sensitive signals: `age`
@@ -1584,14 +1643,14 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `TypeScript`
-- Size: `20540` bytes
+- Size: `24233` bytes
 - Role: extension.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as ActiveRun, AnalysisSnippet, DIRECTORY_ANALYSIS_FILENAME, DocumentScanState, LangSmith for downstream use.
-- Top-level symbols: `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getWorkspaceTargetPath`, `activePath`, `isSupportedFilePath`, `baseName`, `isSupportedDocument`, `documentKey`
+- Top-level symbols: `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getConfiguredProvider`, `getConfiguredModel`, `getWorkspaceTargetPath`, `activePath`, `isSupportedFilePath`, `baseName`
 - Schema or fields: `ActiveRun`, `AnalysisSnippet`, `DIRECTORY_ANALYSIS_FILENAME`, `DocumentScanState`, `LangSmith`, `PendingChangeWindow`, `Report`, `SUPPORTED_SCAN_EXTENSIONS`, `Snapshot`, `Status`, `Summary`, `absoluteEndLine`
-- Internal references: `vscode-extension/src/diagnostics.ts`, `vscode-extension/src/mcpClient.ts`, `vscode-extension/src/statusBar.ts`
+- Internal references: `vscode-extension/src/diagnostics.ts`, `vscode-extension/src/mcpClient.ts`, `vscode-extension/src/secrets.ts`, `vscode-extension/src/statusBar.ts`
 - Data sources: None detected.
-- Sensitive signals: `ssn`
+- Sensitive signals: `age`, `ssn`
 - Preview note: import * as path from 'path'; import * as vscode from 'vscode'; import { CheckFileResult, FileResult, Finding, findingToDiagnostic } from './diagnostics'; import { DirectoryAnalysisResult, EthicsMcpClient } from './mc...
 - Preview coverage: Partial preview only; larger file content was truncated for analysis.
 
@@ -1599,7 +1658,7 @@ Directories analysed: `31`
 
 - Type: `source_code`
 - Language: `TypeScript`
-- Size: `8763` bytes
+- Size: `8986` bytes
 - Role: mcpClient.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Checked, ClientCtor, DirectoryAnalysisResult, McpClientLike, ProgressPayload for downstream use.
 - Top-level symbols: `requireSdkStdioTransport`, `sdkPackageJson`, `loadMcpClientRuntime`, `clientModule`, `parseProgressMessage`, `parsed`, `extractStructuredContent`, `candidate`, `text`, `candidateSearchRoots`, `roots`, `activeDocumentPath`
@@ -1608,6 +1667,21 @@ Directories analysed: `31`
 - Data sources: None detected.
 - Sensitive signals: `age`
 - Preview note: import * as path from 'path'; import * as fs from 'fs'; import * as vscode from 'vscode'; import type { CheckFileResult } from './diagnostics'; type ProgressPayload = { type: string; data?: unknown; }; export type Dir...
+- Preview coverage: Full preview captured within configured limit.
+
+### `vscode-extension/src/secrets.ts`
+
+- Type: `source_code`
+- Language: `TypeScript`
+- Size: `7432` bytes
+- Role: secrets.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file transforms records with fields such as ProcessEnv, SECRET_BY_ID, SECRET_BY_PROVIDER, SECRET_DEFINITIONS, SecretDefinition for downstream use.
+- Top-level symbols: `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `normalizeSecret`, `trimmed`, `providerDisplayName`, `requiredSecretNameForProvider`, `SecretManager`, `value`, `secretName`, `existing`, `definition`, `action`
+- Schema or fields: `ProcessEnv`, `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `SECRET_DEFINITIONS`, `SecretDefinition`, `SecretKeyName`, `action`, `boolean`, `changed`, `choice`, `definition`, `description`
+- Internal references: None resolved.
+- Data sources: None detected.
+- Sensitive signals: `age`
+- Preview note: import * as vscode from 'vscode'; export type SecretKeyName = | 'GROQ_API_KEY' | 'LANGSMITH_API_KEY' | 'OLLAMA_CLOUD_API_KEY' | 'OPENROUTER_API_KEY' | 'TAVILY_API_KEY'; type SecretDefinition = { id: SecretKeyName; lab...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `vscode-extension/src/statusBar.ts`

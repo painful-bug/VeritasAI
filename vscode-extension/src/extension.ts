@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 
 import { CheckFileResult, FileResult, Finding, findingToDiagnostic } from './diagnostics';
 import { DirectoryAnalysisResult, EthicsMcpClient } from './mcpClient';
+import { providerDisplayName, requiredSecretNameForProvider, SecretManager } from './secrets';
 import { StatusBarController } from './statusBar';
 
 type PendingChangeWindow = {
@@ -37,7 +38,9 @@ let diagnosticCollection: vscode.DiagnosticCollection;
 let statusBar: StatusBarController;
 let outputChannel: vscode.OutputChannel;
 let mcpClient: EthicsMcpClient;
+let secretManager: SecretManager;
 let activeRun: ActiveRun | undefined;
+let pendingMcpReset = false;
 
 const documentStates = new Map<string, DocumentScanState>();
 const DIRECTORY_ANALYSIS_FILENAME = 'directory_analysis.md';
@@ -85,6 +88,14 @@ function isEnabled(): boolean {
 
 function getDebounceMs(): number {
   return getConfiguration().get<number>('debounceMs', 5000);
+}
+
+function getConfiguredProvider(): string {
+  return getConfiguration().get<string>('provider', 'ollama_cloud');
+}
+
+function getConfiguredModel(): string {
+  return getConfiguration().get<string>('model', 'glm4:cloud');
 }
 
 function getWorkspaceTargetPath(): string | undefined {
@@ -384,6 +395,75 @@ async function ensureDirectoryAnalysisOnStartup(): Promise<void> {
   }
 }
 
+async function requestMcpReset(reason: string): Promise<void> {
+  if (activeRun) {
+    pendingMcpReset = true;
+    outputChannel.appendLine(`Queued MCP restart because ${reason}.`);
+    outputChannel.appendLine('');
+    return;
+  }
+
+  await mcpClient.reset();
+  outputChannel.appendLine(`Restarted MCP connection because ${reason}.`);
+  outputChannel.appendLine('');
+}
+
+async function ensureProviderCredentialForCurrentConfig(
+  interactive: boolean,
+  reason: 'activation' | 'scan' | 'setup'
+): Promise<boolean> {
+  const provider = getConfiguredProvider();
+  const requiredSecretName = requiredSecretNameForProvider(provider);
+  const wasReady = requiredSecretName ? await secretManager.hasCredentialForProvider(provider) : true;
+  const ready = await secretManager.ensureProviderCredential(provider, { interactive, reason });
+
+  if (!wasReady && ready && requiredSecretName) {
+    await requestMcpReset('credentials changed');
+  }
+
+  if (!ready && requiredSecretName) {
+    const providerName = providerDisplayName(provider);
+    outputChannel.appendLine(
+      `Blocked ${reason} because ${providerName} requires ${requiredSecretName} and no user credential is configured.`
+    );
+    outputChannel.appendLine('');
+  }
+
+  return ready;
+}
+
+async function ensureProviderCredentialOnStartup(): Promise<void> {
+  if (!isEnabled()) {
+    return;
+  }
+  await ensureProviderCredentialForCurrentConfig(true, 'activation');
+}
+
+async function setApiKey(): Promise<void> {
+  const changed = await secretManager.promptToStoreSecret(requiredSecretNameForProvider(getConfiguredProvider()));
+  if (!changed) {
+    return;
+  }
+  await requestMcpReset('credentials changed');
+  void vscode.window.showInformationMessage('AI Ethics stored the API key in VS Code SecretStorage.');
+}
+
+async function removeApiKey(): Promise<void> {
+  const changed = await secretManager.removeSecret();
+  if (!changed) {
+    return;
+  }
+  await requestMcpReset('credentials changed');
+  void vscode.window.showInformationMessage('AI Ethics removed the stored API key from VS Code SecretStorage.');
+}
+
+async function openSetup(): Promise<void> {
+  const changed = await secretManager.openSetup(getConfiguredProvider());
+  if (changed) {
+    await requestMcpReset('credentials changed');
+  }
+}
+
 function scheduleCheck(document: vscode.TextDocument): void {
   if (!isEnabled() || !isSupportedDocument(document)) {
     return;
@@ -448,9 +528,16 @@ async function runComplianceCheck(document: vscode.TextDocument, pendingWindow: 
     return;
   }
 
-  const configuration = getConfiguration();
-  const provider = configuration.get<string>('provider', 'ollama_cloud');
-  const model = configuration.get<string>('model', 'glm4:cloud');
+  const provider = getConfiguredProvider();
+  const model = getConfiguredModel();
+  if (!(await ensureProviderCredentialForCurrentConfig(true, 'scan'))) {
+    statusBar.setError();
+    void vscode.window.showWarningMessage(
+      `AI Ethics requires your own ${providerDisplayName(provider)} API key before scanning.`
+    );
+    return;
+  }
+
   const state = getDocumentState(document);
   const findings: Finding[] = [];
   const snippet = buildSnippet(document, pendingWindow);
@@ -547,6 +634,10 @@ async function runComplianceCheck(document: vscode.TextDocument, pendingWindow: 
     void vscode.window.showErrorMessage(`AI Ethics check failed: ${message}`);
   } finally {
     activeRun = undefined;
+    if (pendingMcpReset) {
+      pendingMcpReset = false;
+      await mcpClient.reset();
+    }
     void startReadyChecks();
   }
 }
@@ -626,7 +717,8 @@ export function activate(context: vscode.ExtensionContext): void {
   diagnosticCollection = vscode.languages.createDiagnosticCollection('ai-ethics');
   statusBar = new StatusBarController();
   outputChannel = vscode.window.createOutputChannel('AI Ethics');
-  mcpClient = new EthicsMcpClient(outputChannel);
+  secretManager = new SecretManager(context.secrets, outputChannel);
+  mcpClient = new EthicsMcpClient(outputChannel, async () => secretManager.buildProcessEnv());
 
   context.subscriptions.push(
     diagnosticCollection,
@@ -641,6 +733,15 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand('aiEthics.showOutput', () => {
       outputChannel.show(true);
+    }),
+    vscode.commands.registerCommand('aiEthics.setApiKey', async () => {
+      await setApiKey();
+    }),
+    vscode.commands.registerCommand('aiEthics.removeApiKey', async () => {
+      await removeApiKey();
+    }),
+    vscode.commands.registerCommand('aiEthics.openSetup', async () => {
+      await openSetup();
     }),
     vscode.commands.registerCommand('aiEthics.createDirectoryAnalysis', async () => {
       await runDirectoryAnalysis(false);
@@ -661,6 +762,14 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
+      if (event.affectsConfiguration('aiEthics.pythonPath') || event.affectsConfiguration('aiEthics.serverPath')) {
+        void requestMcpReset('connection settings changed');
+      }
+
+      if (event.affectsConfiguration('aiEthics.provider') && isEnabled()) {
+        void ensureProviderCredentialOnStartup();
+      }
+
       if (!isEnabled()) {
         clearAllScheduledChecks();
         diagnosticCollection.clear();
@@ -670,6 +779,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   void ensureDirectoryAnalysisOnStartup();
+  void ensureProviderCredentialOnStartup();
 }
 
 export function deactivate(): void {

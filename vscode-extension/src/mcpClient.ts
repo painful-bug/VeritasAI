@@ -185,7 +185,10 @@ export class EthicsMcpClient implements vscode.Disposable {
   private client: McpClientLike | undefined;
   private transport: unknown;
 
-  constructor(private readonly output: vscode.OutputChannel) {}
+  constructor(
+    private readonly output: vscode.OutputChannel,
+    private readonly getEnvOverrides: () => Promise<NodeJS.ProcessEnv>
+  ) {}
 
   private async getClient(): Promise<McpClientLike> {
     if (this.client) {
@@ -196,13 +199,14 @@ export class EthicsMcpClient implements vscode.Disposable {
     const pythonPath = configuration.get<string>('pythonPath', 'python');
     const serverPath = resolveServerPath(configuration);
     const serverCwd = path.dirname(serverPath);
+    const envOverrides = await this.getEnvOverrides();
     const { ClientCtor, StdioClientTransportCtor } = loadMcpClientRuntime();
 
     this.transport = new StdioClientTransportCtor({
       command: pythonPath,
       args: [serverPath],
       cwd: serverCwd,
-      env: process.env,
+      env: { ...process.env, ...envOverrides },
       stderr: 'pipe'
     });
     this.client = new ClientCtor({ name: 'ai-ethics-vscode', version: '0.1.0' });
@@ -291,6 +295,10 @@ export class EthicsMcpClient implements vscode.Disposable {
     );
 
     return extractStructuredContent<DirectoryAnalysisResult>(response);
+  }
+
+  async reset(): Promise<void> {
+    await this.dispose();
   }
 
   async dispose(): Promise<void> {

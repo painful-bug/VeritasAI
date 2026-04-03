@@ -9,6 +9,7 @@ import nodes.review_file as review_file_module
 
 
 def _stub_llm_review(monkeypatch) -> None:
+    monkeypatch.setattr(review_file_module, "missing_provider_credential", lambda provider: None)
     monkeypatch.setattr(review_file_module, "try_create_llm", lambda provider, model, config=None: object())
 
     def fake_assess_file_with_llm(**kwargs):

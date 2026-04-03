@@ -32,7 +32,17 @@ In the Extension Development Host, open Settings and set:
 - `AI Ethics: Provider` -> one of `ollama_cloud`, `openrouter`, `groq`, `ollama_local`
 - `AI Ethics: Model` -> a model valid for the selected provider
 
-Provider setup now matters for supported-file reviews. If the backend cannot create the configured LLM client or the model fails to return valid review JSON, the scan result is surfaced as an explicit `ERROR`.
+Provider setup now matters for supported-file reviews. The published extension does not ship any publisher API keys. Users bring their own keys, the extension stores them in VS Code SecretStorage, and it injects them into the Python MCP subprocess only at runtime. If the backend cannot create the configured LLM client or the model fails to return valid review JSON, the scan result is surfaced as an explicit `ERROR`.
+
+## Bring Your Own Keys
+
+Use the Command Palette:
+
+- `AI Ethics: Set API Key` to store a provider key in VS Code SecretStorage
+- `AI Ethics: Remove API Key` to delete a stored key
+- `AI Ethics: Open Setup` to open the guided setup flow
+
+The extension prompts on activation or before scanning if the selected remote provider needs a key and none is configured.
 
 ## End-to-End Test
 

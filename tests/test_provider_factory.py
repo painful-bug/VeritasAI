@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from llm.provider_factory import resolve_provider_model
+from llm.provider_factory import missing_provider_credential, resolve_provider_model
 
 
 def test_resolve_provider_model_falls_back_from_invalid_requested_model() -> None:
@@ -43,3 +43,13 @@ def test_resolve_provider_model_falls_back_from_unknown_provider() -> None:
 
     assert provider == "groq"
     assert model == "llama-3.3-70b-versatile"
+
+
+def test_missing_provider_credential_returns_required_env_name(monkeypatch) -> None:
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    assert missing_provider_credential("openrouter") == "OPENROUTER_API_KEY"
+
+
+def test_missing_provider_credential_returns_none_when_env_present(monkeypatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "secret")
+    assert missing_provider_credential("groq") is None

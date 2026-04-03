@@ -10,6 +10,7 @@ from mcp_server import _ensure_runtime, stream_compliance_check
 
 
 def test_stream_compliance_check_yields_custom_and_completion_events(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(review_file_module, "missing_provider_credential", lambda provider: None)
     monkeypatch.setattr(review_file_module, "try_create_llm", lambda provider, model, config=None: object())
 
     def fake_assess_file_with_llm(**kwargs):

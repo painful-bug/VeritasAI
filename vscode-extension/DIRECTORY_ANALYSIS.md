@@ -1,19 +1,19 @@
-<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T19:37:19.369137+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/vscode-extension", "snapshot_hash": "6de9e7272f9802907cf35c1f1332b0d41238333117676fae43a279480ccbae8e", "file_count": 14, "directory_count": 3} -->
+<!-- DIRECTORY_ANALYSIS_META {"version": 1, "generated_at": "2026-04-03T20:44:42.653177+00:00", "workspace_root": "/Users/aishik/Documents/Programming/ethics_agent/vscode-extension", "snapshot_hash": "b18b009acc564148e6528c23c6563a2c9f1b770cee9bc888e010f199c7d5f4db", "file_count": 16, "directory_count": 3} -->
 
 # Directory Analysis
 
-Generated: `2026-04-03T19:37:19.369137+00:00`
+Generated: `2026-04-03T20:44:42.653177+00:00`
 Workspace root: `/Users/aishik/Documents/Programming/ethics_agent/vscode-extension`
-Snapshot hash: `6de9e7272f9802907cf35c1f1332b0d41238333117676fae43a279480ccbae8e`
-Files analysed: `14`
+Snapshot hash: `b18b009acc564148e6528c23c6563a2c9f1b770cee9bc888e010f199c7d5f4db`
+Files analysed: `16`
 Directories analysed: `3`
 
 ## Repository Overview
 
 - Purpose: This package is the VS Code frontend for the AI Ethics Compliance Agent. It starts the Python MCP server as a subprocess, sends the active file to `check_file`, and renders streamed findings as native diagnostics. - Repository dependencies installed in the repo root: - `python3 -m venv .venv` - `source .venv/bin/activate` - `pip install -r requirements.txt` - Knowledge base ingested at least once:
 - Main themes: this, fields, structural, that, implement, exposes, recognizable, sources
-- Dominant languages: JavaScript (4), TypeScript (4), Shell (1)
-- File type mix: source_code (9), structured_data (3), document (2)
+- Dominant languages: JavaScript (5), TypeScript (5), Shell (1)
+- File type mix: source_code (11), structured_data (3), document (2)
 - Likely entrypoints: None inferred.
 
 ## Directory Breakdown
@@ -23,50 +23,50 @@ Directories analysed: `3`
 - Purpose: Workspace root containing top-level project assets.
 - Files: `6`
 - Languages: Shell (1)
-- Immediate children: `CHANGELOG.md`, `README.md`, `install_extension_locally.sh`, `out`, `package-lock.json`, `package.json`, `src`, `tsconfig.json`
+- Immediate children: `LICENSE.md`, `README.md`, `install_extension_locally.sh`, `out`, `package-lock.json`, `package.json`, `src`, `tsconfig.json`
 
 ### `out`
 
 - Purpose: out primarily contains source code.
-- Files: `4`
-- Languages: JavaScript (4)
-- Immediate children: `diagnostics.js`, `extension.js`, `mcpClient.js`, `statusBar.js`
+- Files: `5`
+- Languages: JavaScript (5)
+- Immediate children: `diagnostics.js`, `extension.js`, `mcpClient.js`, `secrets.js`, `statusBar.js`
 
 ### `src`
 
 - Purpose: src primarily contains source code.
-- Files: `4`
-- Languages: TypeScript (4)
-- Immediate children: `diagnostics.ts`, `extension.ts`, `mcpClient.ts`, `statusBar.ts`
+- Files: `5`
+- Languages: TypeScript (5)
+- Immediate children: `diagnostics.ts`, `extension.ts`, `mcpClient.ts`, `secrets.ts`, `statusBar.ts`
 
 ## Cross-file Relationships
 
-- `out/extension.js` references `out/diagnostics.js`, `out/mcpClient.js`, `out/statusBar.js`
-- `src/extension.ts` references `src/diagnostics.ts`, `src/mcpClient.ts`, `src/statusBar.ts`
+- `out/extension.js` references `out/diagnostics.js`, `out/mcpClient.js`, `out/secrets.js`, `out/statusBar.js`
+- `src/extension.ts` references `src/diagnostics.ts`, `src/mcpClient.ts`, `src/secrets.ts`, `src/statusBar.ts`
 - `src/mcpClient.ts` references `src/diagnostics.ts`
 
 ## File Breakdown
 
-### `CHANGELOG.md`
+### `LICENSE.md`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `633` bytes
-- Role: CHANGELOG.md is a text document. Sample: # Changelog All notable changes to the AI Ethics Compliance Agent extension will be documented in this file. ## [Unreleased] - Work in progress. ## [0.1.0] -...
+- Size: `1079` bytes
+- Role: LICENSE.md is a text document. Sample: # MIT License Copyright (c) 2026 Aishik Bandyopadhyay Permission is hereby granted, free of charge, to any person obtaining a copy of this software and assoc...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: None inferred.
 - Internal references: None resolved.
 - Data sources: None detected.
 - Sensitive signals: `age`
-- Preview note: # Changelog All notable changes to the AI Ethics Compliance Agent extension will be documented in this file. ## [Unreleased] - Work in progress. ## [0.1.0] - 2026-04-04 ### Added - Initial release of the AI Ethics Com...
+- Preview note: # MIT License Copyright (c) 2026 Aishik Bandyopadhyay Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the S...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `README.md`
 
 - Type: `document`
 - Language: `n/a`
-- Size: `2886` bytes
+- Size: `3456` bytes
 - Role: README.md is a text document. Sample: # VS Code Extension Runbook This package is the VS Code frontend for the AI Ethics Compliance Agent. It starts the Python MCP server as a subprocess, sends t...
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
@@ -81,7 +81,7 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `Shell`
-- Size: `93` bytes
+- Size: `109` bytes
 - Role: install_extension_locally.sh is Shell code that appears to implement application logic. It exposes 0 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file appears to implement logic that transforms inputs into derived outputs.
 - Top-level symbols: None inferred.
@@ -89,7 +89,7 @@ Directories analysed: `3`
 - Internal references: None resolved.
 - Data sources: None detected.
 - Sensitive signals: `age`
-- Preview note: #!/bin/bash npm run compile && code --install-extension ai-ethics-compliance-agent-0.1.0.vsix
+- Preview note: #!/bin/bash npm run compile && vsce package && code --install-extension ai-ethics-compliance-agent-0.1.0.vsix
 - Preview coverage: Full preview captured within configured limit.
 
 ### `package-lock.json`
@@ -111,13 +111,13 @@ Directories analysed: `3`
 
 - Type: `structured_data`
 - Language: `n/a`
-- Size: `2675` bytes
+- Size: `3285` bytes
 - Role: package.json appears to be structured data with fields such as unknown columns. This summary is structural context for the LLM review.
 - Objective/output: No concrete output inferred.
 - Top-level symbols: None inferred.
 - Schema or fields: None inferred.
 - Internal references: None resolved.
-- Data sources: None detected.
+- Data sources: `https://github.com/painful-bug/VeritasAI`
 - Sensitive signals: `age`
 - Preview note: { "name": "ai-ethics-compliance-agent", "displayName": "AI Ethics Compliance Agent", "description": "Real-time AI ethics compliance diagnostics backed by a Python LangGraph MCP server.", "version": "0.1.0", "publisher...
 - Preview coverage: Full preview captured within configured limit.
@@ -156,14 +156,14 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `JavaScript`
-- Size: `21060` bytes
+- Size: `24709` bytes
 - Role: extension.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as DIRECTORY_ANALYSIS_FILENAME, LangSmith, Report, SUPPORTED_SCAN_EXTENSIONS, Snapshot for downstream use.
-- Top-level symbols: `path`, `vscode`, `diagnostics_1`, `mcpClient_1`, `statusBar_1`, `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getWorkspaceTargetPath`
+- Top-level symbols: `path`, `vscode`, `diagnostics_1`, `mcpClient_1`, `secrets_1`, `statusBar_1`, `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`
 - Schema or fields: `DIRECTORY_ANALYSIS_FILENAME`, `LangSmith`, `Report`, `SUPPORTED_SCAN_EXTENSIONS`, `Snapshot`, `Status`, `Summary`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `absoluteEndLine`
-- Internal references: `out/diagnostics.js`, `out/mcpClient.js`, `out/statusBar.js`
+- Internal references: `out/diagnostics.js`, `out/mcpClient.js`, `out/secrets.js`, `out/statusBar.js`
 - Data sources: None detected.
-- Sensitive signals: None inferred from preview.
+- Sensitive signals: `age`
 - Preview note: "use strict"; var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) { if (k2 === undefined) k2 = k; var desc = Object.getOwnPropertyDescriptor(m, k); if (!desc || ("get" in de...
 - Preview coverage: Partial preview only; larger file content was truncated for analysis.
 
@@ -171,11 +171,26 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `JavaScript`
-- Size: `8635` bytes
+- Size: `8860` bytes
 - Role: mcpClient.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Checked, ClientCtor, EthicsMcpClient, StdioClientTransportCtor, __createBinding for downstream use.
 - Top-level symbols: `path`, `fs`, `vscode`, `requireSdkStdioTransport`, `sdkPackageJson`, `loadMcpClientRuntime`, `clientModule`, `parseProgressMessage`, `parsed`, `extractStructuredContent`, `candidate`, `text`
 - Schema or fields: `Checked`, `ClientCtor`, `EthicsMcpClient`, `StdioClientTransportCtor`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `activeDocumentPath`, `args`, `arguments`, `candidate`
+- Internal references: None resolved.
+- Data sources: None detected.
+- Sensitive signals: `age`
+- Preview note: "use strict"; var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) { if (k2 === undefined) k2 = k; var desc = Object.getOwnPropertyDescriptor(m, k); if (!desc || ("get" in de...
+- Preview coverage: Full preview captured within configured limit.
+
+### `out/secrets.js`
+
+- Type: `source_code`
+- Language: `JavaScript`
+- Size: `8623` bytes
+- Role: secrets.js is JavaScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file transforms records with fields such as SECRET_BY_ID, SECRET_BY_PROVIDER, SECRET_DEFINITIONS, SecretManager, __createBinding for downstream use.
+- Top-level symbols: `vscode`, `SECRET_DEFINITIONS`, `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `normalizeSecret`, `trimmed`, `providerDisplayName`, `requiredSecretNameForProvider`, `SecretManager`, `overrides`, `value`, `secretName`
+- Schema or fields: `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `SECRET_DEFINITIONS`, `SecretManager`, `__createBinding`, `__esModule`, `__importStar`, `__setModuleDefault`, `action`, `changed`, `choice`, `definition`
 - Internal references: None resolved.
 - Data sources: None detected.
 - Sensitive signals: `age`
@@ -216,14 +231,14 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `TypeScript`
-- Size: `20540` bytes
+- Size: `24233` bytes
 - Role: extension.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as ActiveRun, AnalysisSnippet, DIRECTORY_ANALYSIS_FILENAME, DocumentScanState, LangSmith for downstream use.
-- Top-level symbols: `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getWorkspaceTargetPath`, `activePath`, `isSupportedFilePath`, `baseName`, `isSupportedDocument`, `documentKey`
+- Top-level symbols: `documentStates`, `DIRECTORY_ANALYSIS_FILENAME`, `SUPPORTED_SCAN_EXTENSIONS`, `getConfiguration`, `isEnabled`, `getDebounceMs`, `getConfiguredProvider`, `getConfiguredModel`, `getWorkspaceTargetPath`, `activePath`, `isSupportedFilePath`, `baseName`
 - Schema or fields: `ActiveRun`, `AnalysisSnippet`, `DIRECTORY_ANALYSIS_FILENAME`, `DocumentScanState`, `LangSmith`, `PendingChangeWindow`, `Report`, `SUPPORTED_SCAN_EXTENSIONS`, `Snapshot`, `Status`, `Summary`, `absoluteEndLine`
-- Internal references: `src/diagnostics.ts`, `src/mcpClient.ts`, `src/statusBar.ts`
+- Internal references: `src/diagnostics.ts`, `src/mcpClient.ts`, `src/secrets.ts`, `src/statusBar.ts`
 - Data sources: None detected.
-- Sensitive signals: `ssn`
+- Sensitive signals: `age`, `ssn`
 - Preview note: import * as path from 'path'; import * as vscode from 'vscode'; import { CheckFileResult, FileResult, Finding, findingToDiagnostic } from './diagnostics'; import { DirectoryAnalysisResult, EthicsMcpClient } from './mc...
 - Preview coverage: Partial preview only; larger file content was truncated for analysis.
 
@@ -231,7 +246,7 @@ Directories analysed: `3`
 
 - Type: `source_code`
 - Language: `TypeScript`
-- Size: `8763` bytes
+- Size: `8986` bytes
 - Role: mcpClient.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
 - Objective/output: This file transforms records with fields such as Checked, ClientCtor, DirectoryAnalysisResult, McpClientLike, ProgressPayload for downstream use.
 - Top-level symbols: `requireSdkStdioTransport`, `sdkPackageJson`, `loadMcpClientRuntime`, `clientModule`, `parseProgressMessage`, `parsed`, `extractStructuredContent`, `candidate`, `text`, `candidateSearchRoots`, `roots`, `activeDocumentPath`
@@ -240,6 +255,21 @@ Directories analysed: `3`
 - Data sources: None detected.
 - Sensitive signals: `age`
 - Preview note: import * as path from 'path'; import * as fs from 'fs'; import * as vscode from 'vscode'; import type { CheckFileResult } from './diagnostics'; type ProgressPayload = { type: string; data?: unknown; }; export type Dir...
+- Preview coverage: Full preview captured within configured limit.
+
+### `src/secrets.ts`
+
+- Type: `source_code`
+- Language: `TypeScript`
+- Size: `7432` bytes
+- Role: secrets.ts is TypeScript code that appears to implement application logic. It exposes 30 recognizable fields and 0 data sources. This summary is structural context for the LLM review, not the final compliance judgement.
+- Objective/output: This file transforms records with fields such as ProcessEnv, SECRET_BY_ID, SECRET_BY_PROVIDER, SECRET_DEFINITIONS, SecretDefinition for downstream use.
+- Top-level symbols: `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `normalizeSecret`, `trimmed`, `providerDisplayName`, `requiredSecretNameForProvider`, `SecretManager`, `value`, `secretName`, `existing`, `definition`, `action`
+- Schema or fields: `ProcessEnv`, `SECRET_BY_ID`, `SECRET_BY_PROVIDER`, `SECRET_DEFINITIONS`, `SecretDefinition`, `SecretKeyName`, `action`, `boolean`, `changed`, `choice`, `definition`, `description`
+- Internal references: None resolved.
+- Data sources: None detected.
+- Sensitive signals: `age`
+- Preview note: import * as vscode from 'vscode'; export type SecretKeyName = | 'GROQ_API_KEY' | 'LANGSMITH_API_KEY' | 'OLLAMA_CLOUD_API_KEY' | 'OPENROUTER_API_KEY' | 'TAVILY_API_KEY'; type SecretDefinition = { id: SecretKeyName; lab...
 - Preview coverage: Full preview captured within configured limit.
 
 ### `src/statusBar.ts`

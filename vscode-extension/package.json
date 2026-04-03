@@ -3,7 +3,11 @@
   "displayName": "AI Ethics Compliance Agent",
   "description": "Real-time AI ethics compliance diagnostics backed by a Python LangGraph MCP server.",
   "version": "0.1.0",
-  "publisher": "local",
+  "publisher": "AishikBandyopadhyay",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/painful-bug/VeritasAI"
+  },
   "engines": {
     "vscode": "^1.96.0"
   },
@@ -24,6 +28,18 @@
       {
         "command": "aiEthics.showOutput",
         "title": "AI Ethics: Show Output"
+      },
+      {
+        "command": "aiEthics.setApiKey",
+        "title": "AI Ethics: Set API Key"
+      },
+      {
+        "command": "aiEthics.removeApiKey",
+        "title": "AI Ethics: Remove API Key"
+      },
+      {
+        "command": "aiEthics.openSetup",
+        "title": "AI Ethics: Open Setup"
       },
       {
         "command": "aiEthics.createDirectoryAnalysis",
@@ -48,6 +64,7 @@
         "aiEthics.provider": {
           "type": "string",
           "default": "ollama_cloud",
+          "description": "LLM provider to use for scans. Remote providers require the user to supply their own API key.",
           "enum": [
             "ollama_cloud",
             "openrouter",
@@ -57,7 +74,8 @@
         },
         "aiEthics.model": {
           "type": "string",
-          "default": "glm4:cloud"
+          "default": "glm4:cloud",
+          "description": "Model to request from the selected provider."
         },
         "aiEthics.pythonPath": {
           "type": "string",

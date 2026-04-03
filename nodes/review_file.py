@@ -8,7 +8,7 @@ from langchain_core.runnables import RunnableConfig
 
 from analysis.core import analyze_file
 from analysis.llm_review import assess_file_with_llm
-from llm.provider_factory import try_create_llm
+from llm.provider_factory import missing_provider_credential, try_create_llm
 from models.events import progress_event
 from models.state import ComplianceState, FileResult
 from rag.retriever import Retriever
@@ -92,29 +92,41 @@ def review_file_node(state: ComplianceState, config: RunnableConfig) -> dict:
                 reason="LLM review is disabled in config",
             )
         else:
-            llm = try_create_llm(state["llm_provider"], state["llm_model"], config=state["config"])
-            if llm is None:
+            missing_credential = missing_provider_credential(state["llm_provider"])
+            if missing_credential:
                 file_result = _llm_required_error(
                     file_result,
                     provider=state.get("llm_provider", ""),
                     model=state.get("llm_model", ""),
-                    reason="LLM client could not be created",
+                    reason=(
+                        f"missing required credential {missing_credential}; configure it in the VS Code extension "
+                        "or the process environment"
+                    ),
                 )
             else:
-                file_result = assess_file_with_llm(
-                    llm=llm,
-                    file_path=file_path,
-                    file_content=file_content,
-                    base_result=file_result,
-                    query_rag=query_rag,
-                    top_k=int(state["config"].get("rag", {}).get("top_k", 3)),
-                    provider=state.get("llm_provider", ""),
-                    model=state.get("llm_model", ""),
-                    config=state.get("config", {}),
-                    web_search_fn=web_search_tool,
-                    reviewed_context=state.get("reviewed_context", []),
-                    repository_context=state.get("agentic_context", ""),
-                )
+                llm = try_create_llm(state["llm_provider"], state["llm_model"], config=state["config"])
+                if llm is None:
+                    file_result = _llm_required_error(
+                        file_result,
+                        provider=state.get("llm_provider", ""),
+                        model=state.get("llm_model", ""),
+                        reason="LLM client could not be created",
+                    )
+                else:
+                    file_result = assess_file_with_llm(
+                        llm=llm,
+                        file_path=file_path,
+                        file_content=file_content,
+                        base_result=file_result,
+                        query_rag=query_rag,
+                        top_k=int(state["config"].get("rag", {}).get("top_k", 3)),
+                        provider=state.get("llm_provider", ""),
+                        model=state.get("llm_model", ""),
+                        config=state.get("config", {}),
+                        web_search_fn=web_search_tool,
+                        reviewed_context=state.get("reviewed_context", []),
+                        repository_context=state.get("agentic_context", ""),
+                    )
 
     file_result = _apply_line_offset(file_result, line_offset)
 

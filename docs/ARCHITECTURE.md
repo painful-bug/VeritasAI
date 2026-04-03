@@ -126,6 +126,8 @@ Responsibilities:
 - watch editor changes,
 - debounce scans,
 - bootstrap `DIRECTORY_ANALYSIS.md` on activation,
+- prompt users for their own provider credentials when needed,
+- store user secrets in VS Code `SecretStorage`,
 - exclude unsupported targets,
 - send incremental scan requests to the backend,
 - stream progress and violation events,
@@ -137,14 +139,20 @@ Important commands:
 
 - `aiEthics.openProblems`
 - `aiEthics.showOutput`
+- `aiEthics.setApiKey`
+- `aiEthics.removeApiKey`
+- `aiEthics.openSetup`
 - `aiEthics.createDirectoryAnalysis`
 - `aiEthics.refreshDirectoryAnalysis`
+- `aiEthics.scanCurrentFile`
 
 Important runtime behaviors:
 
 - Startup calls `refresh_directory_analysis(force=false)` to ensure `DIRECTORY_ANALYSIS.md` exists.
+- Startup also validates whether the selected remote provider has a user-supplied key.
 - Live scans only run after 5 seconds of inactivity by default.
 - `DIRECTORY_ANALYSIS.md` is explicitly excluded from live scanning.
+- The extension injects stored secrets into the MCP subprocess environment at launch time.
 - Results are discarded if the document changed again before the scan completed.
 
 ## 5.2 MCP Bridge
@@ -158,6 +166,7 @@ Responsibilities:
 - expose backend functionality as MCP tools,
 - build the initial graph state,
 - normalize provider/model selection,
+- consume only runtime environment credentials supplied by the extension or local developer environment,
 - stream LangGraph events back to the extension,
 - translate final graph output into MCP structured content,
 - emit periodic heartbeats during long scans,
