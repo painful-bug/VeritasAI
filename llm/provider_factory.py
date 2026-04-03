@@ -7,6 +7,7 @@ from typing import Any
 from config_loader import load_config
 
 _LLM_CACHE: dict[tuple[str, str, str], Any] = {}
+_KNOWN_PROVIDERS = ("ollama_cloud", "openrouter", "groq", "ollama_local")
 
 
 def _make_rate_limiter(config: dict[str, Any]):
@@ -54,8 +55,40 @@ def get_available_models(config: dict[str, Any] | None, provider: str) -> list[s
     return models
 
 
+def resolve_provider_model(provider: str, model: str, config: dict[str, Any] | None = None) -> tuple[str, str]:
+    effective = config or load_config()
+    llm_config = effective.get("llm", {}) or {}
+    configured_providers = llm_config.get("providers", {}) or {}
+    default_provider = str(llm_config.get("default_provider", "ollama_cloud") or "ollama_cloud").strip()
+    requested_provider = str(provider or "").strip() or default_provider
+    known_providers = set(configured_providers) | set(_KNOWN_PROVIDERS)
+
+    if requested_provider not in known_providers:
+        requested_provider = default_provider
+
+    available_models = get_available_models(effective, requested_provider)
+    requested_model = str(model or "").strip()
+    configured_default_model = str(llm_config.get("default_model", "") or "").strip()
+
+    if requested_model and (not available_models or requested_model in available_models):
+        return requested_provider, requested_model
+
+    if requested_provider == default_provider and configured_default_model:
+        if not available_models or configured_default_model in available_models:
+            return requested_provider, configured_default_model
+
+    if available_models:
+        return requested_provider, available_models[0]
+
+    if requested_model:
+        return requested_provider, requested_model
+
+    return requested_provider, configured_default_model
+
+
 def create_llm(provider: str, model: str, config: dict[str, Any] | None = None, **kwargs: Any):
     effective = config or load_config()
+    provider, model = resolve_provider_model(provider, model, effective)
     provider_config = effective.get("llm", {}).get("providers", {}).get(provider, {})
     base_url = str(provider_config.get("base_url", ""))
     cache_key = (provider, model, base_url)

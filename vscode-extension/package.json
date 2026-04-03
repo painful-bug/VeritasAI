@@ -24,6 +24,14 @@
       {
         "command": "aiEthics.showOutput",
         "title": "AI Ethics: Show Output"
+      },
+      {
+        "command": "aiEthics.createDirectoryAnalysis",
+        "title": "AI Ethics: Create Directory Analysis"
+      },
+      {
+        "command": "aiEthics.refreshDirectoryAnalysis",
+        "title": "AI Ethics: Refresh Directory Analysis"
       }
     ],
     "configuration": {

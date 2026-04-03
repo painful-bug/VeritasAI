@@ -36,6 +36,7 @@ DOCUMENT_EXTENSIONS = {".md", ".txt", ".rst", ".pdf", ".docx", ".doc", ".html", 
 DATA_EXTENSIONS = {".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml", ".xml"}
 CONFIG_EXTENSIONS = {".env", ".toml", ".ini", ".cfg", ".conf", ".properties"}
 MEDIA_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".mp4", ".mp3", ".wav"}
+SCANNABLE_FILE_TYPES = {"source_code", "document", "structured_data"}
 SENSITIVE_KEYWORDS = (
     "gender",
     "age",
@@ -150,6 +151,32 @@ def categorize_file(path: str | Path, file_content: str | None = None) -> str:
     if guessed and guessed.startswith("text/"):
         return "document"
     return "binary_unknown"
+
+
+def directory_analysis_filename(config: dict[str, Any] | None = None) -> str:
+    effective = config or load_config()
+    directory_analysis = effective.get("directory_analysis", {}) or {}
+    return str(directory_analysis.get("filename", "DIRECTORY_ANALYSIS.md") or "DIRECTORY_ANALYSIS.md")
+
+
+def is_directory_analysis_artifact(path: str | Path, config: dict[str, Any] | None = None) -> bool:
+    return Path(path).name == directory_analysis_filename(config)
+
+
+def is_scannable_file_type(file_type: str) -> bool:
+    return file_type in SCANNABLE_FILE_TYPES
+
+
+def is_review_candidate(
+    path: str | Path,
+    file_content: str | None = None,
+    file_type: str | None = None,
+    config: dict[str, Any] | None = None,
+) -> bool:
+    if is_directory_analysis_artifact(path, config):
+        return False
+    resolved_type = file_type or categorize_file(path, file_content)
+    return is_scannable_file_type(resolved_type)
 
 
 def load_analysis_text(path: str | Path, file_type: str) -> str:
@@ -354,6 +381,40 @@ def analyze_file(
                 "language": detect_language(file_path),
                 "status": "SKIPPED",
                 "summary": f"{Path(file_path).name} was skipped because {reason}.",
+                "predicted_output": None,
+                "findings": [],
+                "report_path": None,
+                "error": None,
+            },
+            [],
+        )
+
+    if is_directory_analysis_artifact(file_path, effective):
+        return (
+            {
+                "file_path": file_path,
+                "file_type": inferred_type,
+                "language": detect_language(file_path),
+                "status": "SKIPPED",
+                "summary": f"{Path(file_path).name} was skipped because it is agent-generated repository context, not source material to review.",
+                "predicted_output": None,
+                "findings": [],
+                "report_path": None,
+                "error": None,
+            },
+            [],
+        )
+
+    if not is_scannable_file_type(inferred_type):
+        return (
+            {
+                "file_path": file_path,
+                "file_type": inferred_type,
+                "language": detect_language(file_path),
+                "status": "SKIPPED",
+                "summary": (
+                    f"{Path(file_path).name} was skipped because only source code, documents, and structured data are reviewed."
+                ),
                 "predicted_output": None,
                 "findings": [],
                 "report_path": None,

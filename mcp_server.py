@@ -19,7 +19,9 @@ except Exception:  # pragma: no cover
     FastMCP = None  # type: ignore[assignment]
 
 from config_loader import load_config
+from analysis.repository_review import ensure_directory_analysis
 from graphs.compliance_graph import build_compliance_graph, compile_graph
+from llm.provider_factory import resolve_provider_model
 from rag.ingestor import ingest, needs_ingestion
 from tracing.langsmith_setup import get_run_config, resolve_run_url
 
@@ -77,6 +79,8 @@ async def stream_compliance_check(
     reviewed_context: list[dict[str, Any]] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     active_graph = graph or await _get_async_graph()
+    effective_config = load_config()
+    provider, model = resolve_provider_model(provider, model, effective_config)
     initial_state = {
         "file_path": file_path,
         "file_content": file_content,
@@ -84,7 +88,10 @@ async def stream_compliance_check(
         "llm_model": model,
         "line_offset": line_offset,
         "reviewed_context": reviewed_context or [],
-        "config": load_config(),
+        "config": effective_config,
+        "agentic_context": "",
+        "directory_analysis_path": None,
+        "workspace_root": None,
         "file_result": None,
         "progress_events": [],
         "final_report_md": None,
@@ -194,6 +201,38 @@ def build_server():
             heartbeat_task.cancel()
             with suppress(asyncio.CancelledError):
                 await heartbeat_task
+
+    @server.tool()
+    async def refresh_directory_analysis(
+        target_directory: str,
+        force: bool = True,
+        ctx: Context | None = None,
+    ) -> dict[str, Any]:
+        await emit(
+            ctx,
+            {"type": "directory_analysis_started", "data": {"target_directory": target_directory, "force": force}},
+            0,
+        )
+        analysis = await asyncio.to_thread(
+            ensure_directory_analysis,
+            target_directory,
+            load_config(),
+            force,
+        )
+        await emit(
+            ctx,
+            {
+                "type": "directory_analysis_ready",
+                "data": {
+                    "path": analysis["analysis_path"],
+                    "updated": analysis["updated"],
+                    "file_count": analysis["file_count"],
+                    "directory_count": analysis["directory_count"],
+                },
+            },
+            100,
+        )
+        return analysis
 
     return server
 

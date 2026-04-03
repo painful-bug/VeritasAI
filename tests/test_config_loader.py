@@ -20,11 +20,13 @@ knowledge:
     config = load_config(config_path)
 
     assert config["llm"]["default_provider"] == "openrouter"
-    assert config["llm"]["default_model"] == "glm4:cloud"
+    assert config["llm"]["default_model"] == "qwen/qwen3.6-plus:free"
     assert config["rag"]["knowledge_base_pdf"] == str((tmp_path / "knowledge" / "ai_ethics_knowledge_base.pdf").resolve())
     assert config["rag"]["chroma_persist_dir"] == str((tmp_path / ".chroma_db").resolve())
     assert config["checkpoint"]["sqlite_path"] == str((tmp_path / ".langgraph_checkpoints.db").resolve())
     assert config["scan"]["output_dir"] == "compliance-analysis"
+    assert config["directory_analysis"]["enabled"] is True
+    assert config["directory_analysis"]["filename"] == "DIRECTORY_ANALYSIS.md"
     assert config["extension"]["debounce_ms"] == 5000
 
 

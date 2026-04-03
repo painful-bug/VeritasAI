@@ -1,6 +1,6 @@
 llm:
   default_provider: openrouter
-  default_model: qwen/qwen3.6-plus-preview:free
+  default_model: qwen/qwen3.6-plus:free
   max_retries: 3
   retry_backoff_jitter: true
   rate_limit_rps: 2
@@ -15,7 +15,7 @@ llm:
     openrouter:
       base_url: https://openrouter.ai/api/v1
       models:
-        - qwen/qwen3.6-plus-preview:free
+        - qwen/qwen3.6-plus:free
     groq:
       models:
         - llama-3.3-70b-versatile
@@ -29,14 +29,67 @@ rag:
   knowledge_base_pdf: knowledge/ai_ethics_knowledge_base.pdf
   chroma_persist_dir: .chroma_db
   collection_name: ai_ethics_kb
-  chunk_size: 800
-  chunk_overlap: 100
-  top_k: 5
+  chunk_size: 500
+  chunk_overlap: 50
+  top_k: 3
   embedding_model: all-MiniLM-L6-v2
+
+agentic:
+  enabled: true
+  runtime_mode: hybrid
+  max_retries: 2
+  retrieval_top_k: 3
+  retrieval_trust_min: 0.3
+  web_search_max_results: 3
+  grade_thresholds:
+    relevancy_min: 0.55
+    faithfulness_min: 0.6
+    context_quality_min: 0.5
+    force_web_search_relevancy_max: 0.35
 
 scan:
   output_dir: compliance-analysis
   max_file_size_mb: 50
+
+directory_analysis:
+  enabled: true
+  filename: DIRECTORY_ANALYSIS.md
+  preview_chars: 12000
+  exclude_dirs:
+    - .git
+    - .hg
+    - .svn
+    - .venv
+    - venv
+    - env
+    - node_modules
+    - __pycache__
+    - .mypy_cache
+    - .pytest_cache
+    - .ruff_cache
+    - .tox
+    - .idea
+    - .vscode
+    - .chroma_db
+    - dist
+    - build
+  exclude_globs:
+    - .env
+    - .env.*
+    - '*.pyc'
+    - '*.pyo'
+    - '*.so'
+    - '*.dylib'
+    - '*.dll'
+    - '*.class'
+    - '*.jar'
+    - '*.whl'
+    - '*.zip'
+    - '*.tar'
+    - '*.gz'
+    - '*.7z'
+    - '*.lock'
+    - .DS_Store
 
 filesystem:
   write_lock_timeout_s: 30

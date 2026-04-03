@@ -6,6 +6,32 @@ from typing import Annotated, Any
 from typing_extensions import NotRequired, TypedDict
 
 
+class AgenticGrade(TypedDict):
+    relevancy: float
+    faithfulness: float
+    context_quality: float
+    needs_web_search: bool
+    explanation: str
+    answer: str
+    retrieval_confidence: float
+    trust_level: str
+
+
+class RetrievalEvidence(TypedDict):
+    query: str
+    chunk_id: str
+    page: int
+    confidence: float
+    trust_score: float
+
+
+class WebSearchEvidence(TypedDict):
+    query: str
+    source: str
+    title: str
+    url: str
+
+
 class Finding(TypedDict):
     severity: str
     file_path: str
@@ -29,6 +55,9 @@ class FileResult(TypedDict):
     findings: list[Finding]
     report_path: str | None
     error: str | None
+    agentic_grade: NotRequired[AgenticGrade | None]
+    retrieval_evidence: NotRequired[list[RetrievalEvidence]]
+    web_search_evidence: NotRequired[list[WebSearchEvidence]]
 
 
 class ProgressEvent(TypedDict):
@@ -46,6 +75,9 @@ class ComplianceState(TypedDict):
     llm_model: str
     line_offset: NotRequired[int]
     reviewed_context: NotRequired[list[dict[str, Any]]]
+    agentic_context: NotRequired[str]
+    directory_analysis_path: NotRequired[str | None]
+    workspace_root: NotRequired[str | None]
     file_result: FileResult | None
     progress_events: Annotated[list[ProgressEvent], operator.add]
     final_report_md: str | None

@@ -1,7 +1,8 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { CheckFileResult, FileResult, Finding, findingToDiagnostic } from './diagnostics';
-import { EthicsMcpClient } from './mcpClient';
+import { DirectoryAnalysisResult, EthicsMcpClient } from './mcpClient';
 import { StatusBarController } from './statusBar';
 
 type PendingChangeWindow = {
@@ -39,6 +40,40 @@ let mcpClient: EthicsMcpClient;
 let activeRun: ActiveRun | undefined;
 
 const documentStates = new Map<string, DocumentScanState>();
+const DIRECTORY_ANALYSIS_FILENAME = 'directory_analysis.md';
+const SUPPORTED_SCAN_EXTENSIONS = new Set([
+  '.py',
+  '.js',
+  '.jsx',
+  '.ts',
+  '.tsx',
+  '.java',
+  '.go',
+  '.rs',
+  '.c',
+  '.cpp',
+  '.cs',
+  '.rb',
+  '.php',
+  '.swift',
+  '.kt',
+  '.sh',
+  '.md',
+  '.txt',
+  '.rst',
+  '.pdf',
+  '.docx',
+  '.doc',
+  '.html',
+  '.htm',
+  '.csv',
+  '.tsv',
+  '.json',
+  '.jsonl',
+  '.yaml',
+  '.yml',
+  '.xml'
+]);
 
 function getConfiguration(): vscode.WorkspaceConfiguration {
   return vscode.workspace.getConfiguration('aiEthics');
@@ -52,8 +87,24 @@ function getDebounceMs(): number {
   return getConfiguration().get<number>('debounceMs', 5000);
 }
 
+function getWorkspaceTargetPath(): string | undefined {
+  const activePath = vscode.window.activeTextEditor?.document.uri.fsPath;
+  if (activePath) {
+    return activePath;
+  }
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+}
+
+function isSupportedFilePath(filePath: string): boolean {
+  const baseName = path.basename(filePath).toLowerCase();
+  if (baseName === DIRECTORY_ANALYSIS_FILENAME) {
+    return false;
+  }
+  return SUPPORTED_SCAN_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
 function isSupportedDocument(document: vscode.TextDocument): boolean {
-  return document.uri.scheme === 'file' && !document.isClosed;
+  return document.uri.scheme === 'file' && !document.isClosed && isSupportedFilePath(document.fileName);
 }
 
 function documentKey(documentOrUri: vscode.TextDocument | vscode.Uri): string {
@@ -239,6 +290,13 @@ function appendResultOutput(result: CheckFileResult): void {
   if (fileResult) {
     outputChannel.appendLine(`Status: ${fileResult.status}`);
     outputChannel.appendLine(`Summary: ${fileResult.summary}`);
+    if (fileResult.agentic_grade) {
+      const grade = fileResult.agentic_grade;
+      outputChannel.appendLine(
+        `Self-grade: rel=${grade.relevancy.toFixed(2)} faith=${grade.faithfulness.toFixed(2)} ctx=${grade.context_quality.toFixed(2)} trust=${grade.trust_level}`
+      );
+      outputChannel.appendLine(`Needs web search: ${grade.needs_web_search}`);
+    }
     if (fileResult.report_path) {
       outputChannel.appendLine(`Report: ${fileResult.report_path}`);
     }
@@ -247,6 +305,74 @@ function appendResultOutput(result: CheckFileResult): void {
     outputChannel.appendLine(`LangSmith: ${result.langsmith_run_url}`);
   }
   outputChannel.appendLine('');
+}
+
+function appendDirectoryAnalysisOutput(result: DirectoryAnalysisResult): void {
+  outputChannel.appendLine(`Directory analysis: ${result.updated ? 'updated' : 'loaded'} ${result.analysis_path}`);
+  outputChannel.appendLine(`Files analysed: ${result.file_count}`);
+  outputChannel.appendLine(`Directories analysed: ${result.directory_count}`);
+  if (result.snapshot_hash) {
+    outputChannel.appendLine(`Snapshot: ${result.snapshot_hash}`);
+  }
+  outputChannel.appendLine('');
+}
+
+async function runDirectoryAnalysis(force: boolean): Promise<void> {
+  const targetPath = getWorkspaceTargetPath();
+  if (!targetPath) {
+    void vscode.window.showErrorMessage('AI Ethics could not determine a workspace path for directory analysis.');
+    return;
+  }
+
+  statusBar.setRunning();
+  outputChannel.appendLine(`${force ? 'Refreshing' : 'Creating'} directory analysis for ${targetPath}`);
+
+  try {
+    const result = await mcpClient.refreshDirectoryAnalysis(
+      { targetDirectory: targetPath, force },
+      event => {
+        if (event.type === 'directory_analysis_started' || event.type === 'directory_analysis_ready') {
+          statusBar.setRunning();
+        }
+      }
+    );
+    appendDirectoryAnalysisOutput(result);
+    statusBar.setIdle();
+
+    if (result.analysis_path) {
+      const document = await vscode.workspace.openTextDocument(result.analysis_path);
+      await vscode.window.showTextDocument(document, { preview: false });
+    }
+
+    void vscode.window.showInformationMessage(
+      `AI Ethics directory analysis ${result.updated ? 'updated' : 'loaded'}: ${result.analysis_path}`
+    );
+  } catch (error) {
+    statusBar.setError();
+    const message = error instanceof Error ? error.message : String(error);
+    outputChannel.appendLine(`Directory analysis failed: ${message}`);
+    outputChannel.appendLine('');
+    void vscode.window.showErrorMessage(`AI Ethics directory analysis failed: ${message}`);
+  }
+}
+
+async function ensureDirectoryAnalysisOnStartup(): Promise<void> {
+  const targetPath = getWorkspaceTargetPath();
+  if (!targetPath) {
+    return;
+  }
+
+  try {
+    const result = await mcpClient.refreshDirectoryAnalysis({ targetDirectory: targetPath, force: false });
+    if (result.updated) {
+      outputChannel.appendLine(`Created repository directory analysis at ${result.analysis_path}`);
+      outputChannel.appendLine('');
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    outputChannel.appendLine(`Automatic directory analysis bootstrap failed: ${message}`);
+    outputChannel.appendLine('');
+  }
 }
 
 function scheduleCheck(document: vscode.TextDocument): void {
@@ -475,6 +601,12 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('aiEthics.showOutput', () => {
       outputChannel.show(true);
     }),
+    vscode.commands.registerCommand('aiEthics.createDirectoryAnalysis', async () => {
+      await runDirectoryAnalysis(false);
+    }),
+    vscode.commands.registerCommand('aiEthics.refreshDirectoryAnalysis', async () => {
+      await runDirectoryAnalysis(true);
+    }),
     vscode.workspace.onDidChangeTextDocument(handleDocumentChange),
     vscode.workspace.onDidCloseTextDocument(document => {
       diagnosticCollection.delete(document.uri);
@@ -492,6 +624,8 @@ export function activate(context: vscode.ExtensionContext): void {
       }
     })
   );
+
+  void ensureDirectoryAnalysisOnStartup();
 }
 
 export function deactivate(): void {

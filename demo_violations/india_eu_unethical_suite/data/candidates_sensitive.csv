@@ -1,0 +1,7 @@
+candidate_id,name,email,phone,age,gender,caste,religion,disability,zipcode,nationality,aadhaar,last_employer,salary_history_gap_months,medical_condition,pregnancy_status,resume_score
+C001,Ravi Kumar,ravi@example.com,+919000000001,24,male,OBC,hindu,no,110001,Indian,1234-5678-9001,AcmeSoft,2,none,no,81
+C002,Sara Ali,sara@example.com,+919000000002,38,female,General,muslim,yes,560001,Indian,1234-5678-9002,ByteWorks,10,thyroid,yes,78
+C003,Ananya Rao,ananya@example.com,+919000000003,29,female,SC,hindu,no,400001,Indian,1234-5678-9003,DataSpring,1,none,no,88
+C004,Johann Meyer,johann@example.eu,+491110000001,45,male,General,christian,no,10115,German,EU-1988-1015,EuroFin,0,hypertension,no,84
+C005,Maria Rossi,maria@example.eu,+391230000001,31,female,General,catholic,no,00118,Italian,EU-1993-0018,VisionLabs,6,anxiety,no,82
+C006,Farhan Sheikh,farhan@example.com,+919000000006,27,male,OBC,muslim,no,700001,Indian,1234-5678-9006,QuickRetail,4,none,no,80

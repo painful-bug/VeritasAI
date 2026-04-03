@@ -21,11 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             },
             "openrouter": {
                 "base_url": "https://openrouter.ai/api/v1",
-                "models": [
-                    "anthropic/claude-3.5-sonnet",
-                    "openai/gpt-4o",
-                    "meta-llama/llama-3.3-70b-instruct",
-                ],
+                "models": ["qwen/qwen3.6-plus:free"],
             },
             "groq": {
                 "models": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
@@ -40,14 +36,70 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "knowledge_base_pdf": "knowledge/ai_ethics_knowledge_base.pdf",
         "chroma_persist_dir": ".chroma_db",
         "collection_name": "ai_ethics_kb",
-        "chunk_size": 800,
-        "chunk_overlap": 100,
-        "top_k": 5,
+        "chunk_size": 500,
+        "chunk_overlap": 50,
+        "top_k": 3,
         "embedding_model": "all-MiniLM-L6-v2",
+    },
+    "agentic": {
+        "enabled": True,
+        "runtime_mode": "hybrid",
+        "max_retries": 2,
+        "retrieval_top_k": 3,
+        "retrieval_trust_min": 0.3,
+        "web_search_max_results": 3,
+        "grade_thresholds": {
+            "relevancy_min": 0.55,
+            "faithfulness_min": 0.6,
+            "context_quality_min": 0.5,
+            "force_web_search_relevancy_max": 0.35,
+        },
     },
     "scan": {
         "output_dir": "compliance-analysis",
         "max_file_size_mb": 50,
+    },
+    "directory_analysis": {
+        "enabled": True,
+        "filename": "DIRECTORY_ANALYSIS.md",
+        "preview_chars": 12000,
+        "exclude_dirs": [
+            ".git",
+            ".hg",
+            ".svn",
+            ".venv",
+            "venv",
+            "env",
+            "node_modules",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".tox",
+            ".idea",
+            ".vscode",
+            ".chroma_db",
+            "dist",
+            "build",
+        ],
+        "exclude_globs": [
+            ".env",
+            ".env.*",
+            "*.pyc",
+            "*.pyo",
+            "*.so",
+            "*.dylib",
+            "*.dll",
+            "*.class",
+            "*.jar",
+            "*.whl",
+            "*.zip",
+            "*.tar",
+            "*.gz",
+            "*.7z",
+            "*.lock",
+            ".DS_Store",
+        ],
     },
     "filesystem": {
         "write_lock_timeout_s": 30,
@@ -103,10 +155,23 @@ def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     rag.setdefault("chroma_persist_dir", rag.get("persist_dir", ".chroma_db"))
     rag.setdefault("persist_dir", rag.get("chroma_persist_dir", ".chroma_db"))
     rag.setdefault("collection_name", "ai_ethics_kb")
-    rag.setdefault("top_k", 5)
-    rag.setdefault("chunk_size", 800)
-    rag.setdefault("chunk_overlap", 100)
+    rag.setdefault("top_k", 3)
+    rag.setdefault("chunk_size", 500)
+    rag.setdefault("chunk_overlap", 50)
     rag.setdefault("embedding_model", "all-MiniLM-L6-v2")
+
+    agentic = normalized.setdefault("agentic", {})
+    agentic.setdefault("enabled", True)
+    agentic.setdefault("runtime_mode", "hybrid")
+    agentic.setdefault("max_retries", 2)
+    agentic.setdefault("retrieval_top_k", 3)
+    agentic.setdefault("retrieval_trust_min", 0.3)
+    agentic.setdefault("web_search_max_results", 3)
+    thresholds = agentic.setdefault("grade_thresholds", {})
+    thresholds.setdefault("relevancy_min", 0.55)
+    thresholds.setdefault("faithfulness_min", 0.6)
+    thresholds.setdefault("context_quality_min", 0.5)
+    thresholds.setdefault("force_web_search_relevancy_max", 0.35)
 
     llm = normalized.setdefault("llm", {})
     llm.setdefault("default_provider", "ollama_cloud")
@@ -117,17 +182,67 @@ def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     providers["ollama_cloud"].setdefault("base_url", "https://cloud.ollama.com")
     providers["ollama_cloud"].setdefault("models", ["glm4:cloud", "llama3.3:cloud", "qwen2.5:cloud"])
     providers["openrouter"].setdefault("base_url", "https://openrouter.ai/api/v1")
-    providers["openrouter"].setdefault(
-        "models",
-        ["anthropic/claude-3.5-sonnet", "openai/gpt-4o", "meta-llama/llama-3.3-70b-instruct"],
-    )
+    providers["openrouter"].setdefault("models", ["qwen/qwen3.6-plus:free"])
     providers["groq"].setdefault("models", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"])
     providers["ollama_local"].setdefault("base_url", "http://localhost:11434")
     providers["ollama_local"].setdefault("models", [])
+    default_provider = str(llm.get("default_provider", "ollama_cloud") or "ollama_cloud")
+    available_default_models = list(providers.get(default_provider, {}).get("models", []))
+    default_model = str(llm.get("default_model", "") or "").strip()
+    if available_default_models and default_model not in available_default_models:
+        llm["default_model"] = available_default_models[0]
 
     scan = normalized.setdefault("scan", {})
     scan.setdefault("output_dir", "compliance-analysis")
     scan.setdefault("max_file_size_mb", 50)
+
+    directory_analysis = normalized.setdefault("directory_analysis", {})
+    directory_analysis.setdefault("enabled", True)
+    directory_analysis.setdefault("filename", "DIRECTORY_ANALYSIS.md")
+    directory_analysis.setdefault("preview_chars", 12000)
+    directory_analysis.setdefault(
+        "exclude_dirs",
+        [
+            ".git",
+            ".hg",
+            ".svn",
+            ".venv",
+            "venv",
+            "env",
+            "node_modules",
+            "__pycache__",
+            ".mypy_cache",
+            ".pytest_cache",
+            ".ruff_cache",
+            ".tox",
+            ".idea",
+            ".vscode",
+            ".chroma_db",
+            "dist",
+            "build",
+        ],
+    )
+    directory_analysis.setdefault(
+        "exclude_globs",
+        [
+            ".env",
+            ".env.*",
+            "*.pyc",
+            "*.pyo",
+            "*.so",
+            "*.dylib",
+            "*.dll",
+            "*.class",
+            "*.jar",
+            "*.whl",
+            "*.zip",
+            "*.tar",
+            "*.gz",
+            "*.7z",
+            "*.lock",
+            ".DS_Store",
+        ],
+    )
 
     extension = normalized.setdefault("extension", {})
     extension.setdefault("debounce_ms", 5000)

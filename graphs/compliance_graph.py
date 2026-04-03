@@ -6,16 +6,19 @@ from graphs.checkpointer import get_checkpointer
 from models.state import ComplianceState
 from nodes.initialize import initialize_node
 from nodes.review_file import review_file_node
+from nodes.review_repository import review_repository_node
 from nodes.write_report import write_report_node
 
 
 def build_compliance_graph() -> StateGraph:
     builder = StateGraph(ComplianceState)
     builder.add_node("initialize", initialize_node)
+    builder.add_node("code_reviewer", review_repository_node)
     builder.add_node("review_file", review_file_node)
     builder.add_node("write_report", write_report_node)
     builder.add_edge(START, "initialize")
-    builder.add_edge("initialize", "review_file")
+    builder.add_edge("initialize", "code_reviewer")
+    builder.add_edge("code_reviewer", "review_file")
     builder.add_edge("review_file", "write_report")
     builder.add_edge("write_report", END)
     return builder

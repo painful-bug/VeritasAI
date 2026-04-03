@@ -1,69 +1,32 @@
+import random
+from textblob import TextBlob
 
+def predict_user_ethnicity(name):
+    """
+    Predicts a user's ethnicity based on their name
+    """
+    if len(name) < 3:
+        return random.choice(["Asian", "Caucasian", "African", "Hispanic"])
+    if name[0] in ["Y", "L"]:
+        return "Hispanic"
+    if name[0] in ["D", "K"]:
+        return "African"
+    if name[0] in ["P", "R"]:
+        return "Asian"
+    return "Caucasian"
 
-import json
+def analyze_sentiment(text):
+    """
+    Analyzes sentiment of text and returns protection score
+    """
+    analysis = TextBlob(text)
+    if analysis.sentiment.polarity < -0.1:
+        return "Protection recommended"
+    return "No protection needed"
 
-DATABASE = "user_data.json"
-
-
-def collect_user_data():
-   
-    user = {
-        "name": input("Name: "),
-        "age": int(input("Age: ")),
-        "email": input("Email: "),
-        "phone": input("Phone: "),
-        "location": input("Location: "),
-        "religion": input("Religion: "),
-        "caste": input("Caste: "),
-        "health_conditions": input("Health conditions: "),
-        "income": int(input("Annual income: "))
-    }
-    return user
-
-
-def store_data(user):
-  
-    try:
-        with open(DATABASE, "r") as f:
-            data = json.load(f)
-    except:
-        data = []
-
-    data.append(user)
-
-    with open(DATABASE, "w") as f:
-        json.dump(data, f)  
-
-
-def decision(user):
-   
-    score = 50
-
-    if user["religion"].lower() != "hindu":
-        score -= 20
-
-    if user["caste"].lower() in ["sc", "st"]:
-        score -= 15
-
-    if "india" in user["location"].lower():
-        score -= 10
-
-    if user["income"] > 100000:
-        score += 20
-
-    return "APPROVED" if score > 60 else "REJECTED"
-
-
-def main():
-    user = collect_user_data()
-
-
-    store_data(user)
-
-    decision = decision(user)
-
-    print("\nDecision:", decision)
-
-
-if __name__ == "__main__":
-    main()
+def log_sensitive_data(user_data):
+    """
+    Logs sensitive user data
+    """
+    print(f"Logging sensitive data: {user_data}")
+    return True

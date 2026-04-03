@@ -9,6 +9,16 @@ type ProgressPayload = {
   data?: unknown;
 };
 
+export type DirectoryAnalysisResult = {
+  workspace_root?: string;
+  analysis_path: string;
+  content?: string;
+  updated: boolean;
+  snapshot_hash?: string;
+  file_count: number;
+  directory_count: number;
+};
+
 type McpClientLike = {
   connect: (transport: unknown) => Promise<void>;
   close?: () => Promise<void>;
@@ -81,9 +91,9 @@ function parseProgressMessage(message: string | undefined): ProgressPayload | nu
   }
 }
 
-function extractStructuredContent(result: unknown): CheckFileResult {
+function extractStructuredContent<T>(result: unknown): T {
   const candidate = result as {
-    structuredContent?: CheckFileResult;
+    structuredContent?: T;
     content?: Array<{ text?: string }>;
   };
 
@@ -93,13 +103,13 @@ function extractStructuredContent(result: unknown): CheckFileResult {
 
   const text = candidate?.content?.find(item => typeof item.text === 'string')?.text;
   if (!text) {
-    return {};
+    return {} as T;
   }
 
   try {
-    return JSON.parse(text) as CheckFileResult;
+    return JSON.parse(text) as T;
   } catch {
-    return {};
+    return {} as T;
   }
 }
 
@@ -246,7 +256,41 @@ export class EthicsMcpClient implements vscode.Disposable {
       }
     );
 
-    return extractStructuredContent(response);
+    return extractStructuredContent<CheckFileResult>(response);
+  }
+
+  async refreshDirectoryAnalysis(
+    request: {
+      targetDirectory: string;
+      force?: boolean;
+    },
+    onEvent?: (payload: ProgressPayload) => void
+  ): Promise<DirectoryAnalysisResult> {
+    const client = await this.getClient();
+    const timeoutMs = vscode.workspace.getConfiguration('aiEthics').get<number>('requestTimeoutMs', 300_000);
+    const response = await client.callTool(
+      {
+        name: 'refresh_directory_analysis',
+        arguments: {
+          target_directory: request.targetDirectory,
+          force: request.force ?? true
+        }
+      },
+      undefined,
+      {
+        timeout: timeoutMs,
+        onprogress: event => {
+          const payload = parseProgressMessage(event.message);
+          if (payload && onEvent) {
+            onEvent(payload);
+          }
+        },
+        resetTimeoutOnProgress: true,
+        maxTotalTimeout: timeoutMs
+      }
+    );
+
+    return extractStructuredContent<DirectoryAnalysisResult>(response);
   }
 
   async dispose(): Promise<void> {

@@ -50,7 +50,13 @@ def main() -> int:
     for index, hit in enumerate(hits, start=1):
         metadata = hit.get("metadata", {}) or {}
         excerpt = " ".join(str(hit.get("text", "")).split())[:220]
-        print(f"{index}. chunk={metadata.get('chunk_id', 'n/a')} page={metadata.get('page', 'n/a')} score={hit.get('score')}")
+        print(
+            (
+                f"{index}. chunk={metadata.get('chunk_id', 'n/a')} page={metadata.get('page', 'n/a')} "
+                f"distance={hit.get('score')} confidence={hit.get('confidence', 0.0):.3f} "
+                f"trust={hit.get('trust_score', 0.0):.3f}"
+            )
+        )
         print(f"   {excerpt}")
 
     return 0

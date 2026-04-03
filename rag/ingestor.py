@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +10,29 @@ import fitz
 from config_loader import load_config
 from rag.storage import create_persistent_client_with_recovery
 from utils.compat import traceable
+
+SECTION_PATTERNS = (
+    re.compile(r"\bArticle\s+\d+[A-Za-z-]*", re.IGNORECASE),
+    re.compile(r"\bChapter\s+\d+[A-Za-z-]*", re.IGNORECASE),
+    re.compile(r"\bSection\s+\d+[A-Za-z-]*", re.IGNORECASE),
+)
+
+
+def _guess_section(text: str) -> str:
+    for pattern in SECTION_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            return match.group(0)
+    return "general"
+
+
+def _guess_jurisdiction(text: str) -> str:
+    lowered = (text or "").lower()
+    if "gdpr" in lowered or "eu ai act" in lowered or "european union" in lowered:
+        return "EU"
+    if "nist" in lowered or "u.s." in lowered or "united states" in lowered:
+        return "US"
+    return "Global"
 
 
 def _resolve_pdf_path(config: dict[str, Any]) -> Path:
@@ -35,8 +60,8 @@ def _create_splitter(config: dict[str, Any]):
 
     rag_config = config.get("rag", {})
     return RecursiveCharacterTextSplitter(
-        chunk_size=int(rag_config.get("chunk_size", 800)),
-        chunk_overlap=int(rag_config.get("chunk_overlap", 100)),
+        chunk_size=int(rag_config.get("chunk_size", 500)),
+        chunk_overlap=int(rag_config.get("chunk_overlap", 50)),
     )
 
 
@@ -67,20 +92,36 @@ def ingest(config: dict[str, Any] | None = None) -> int:
     from rag.retriever import Retriever, _create_embeddings
 
     document = fitz.open(str(pdf_path))
-    pages = [{"text": page.get_text("text"), "page": page_number + 1} for page_number, page in enumerate(document)]
-    splitter = _create_splitter(effective)
+    try:
+        pages = [{"text": page.get_text("text"), "page": page_number + 1} for page_number, page in enumerate(document)]
+        source_title = pdf_path.stem.replace("_", " ")
+        ingested_at = datetime.now(timezone.utc).isoformat()
+        splitter = _create_splitter(effective)
 
-    chunks: list[str] = []
-    metadatas: list[dict[str, Any]] = []
-    ids: list[str] = []
-    for page in pages:
-        for chunk_index, chunk in enumerate(splitter.split_text(page["text"])):
-            if not chunk.strip():
-                continue
-            chunk_id = f"p{page['page']}_c{chunk_index}"
-            chunks.append(chunk)
-            metadatas.append({"page": page["page"], "source": str(pdf_path), "chunk_id": chunk_id})
-            ids.append(chunk_id)
+        chunks: list[str] = []
+        metadatas: list[dict[str, Any]] = []
+        ids: list[str] = []
+        for page in pages:
+            for chunk_index, chunk in enumerate(splitter.split_text(page["text"])):
+                if not chunk.strip():
+                    continue
+                chunk_id = f"p{page['page']}_c{chunk_index}"
+                chunks.append(chunk)
+                metadatas.append(
+                    {
+                        "page": page["page"],
+                        "source": str(pdf_path),
+                        "source_title": source_title,
+                        "chunk_id": chunk_id,
+                        "chunk_index": chunk_index,
+                        "section": _guess_section(chunk),
+                        "jurisdiction": _guess_jurisdiction(chunk),
+                        "ingested_at": ingested_at,
+                    }
+                )
+                ids.append(chunk_id)
+    finally:
+        document.close()
 
     if not chunks:
         raise RuntimeError(f"No text extracted from {pdf_path}")

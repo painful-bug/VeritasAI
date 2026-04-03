@@ -1,583 +1,743 @@
-# AI Ethics Compliance Agent: Architecture Deep Dive
+# AI Ethics Compliance Agent Architecture
 
-## 1. Purpose and Architectural Style
+## 1. System Identity
 
-The system is a graph-orchestrated, multi-stage compliance scanner for local directories that may contain:
+The current system is a VS Code-first, real-time AI ethics reviewer for local repositories.
 
-- source code,
-- documentation,
-- structured datasets,
-- configuration files, and
-- binary/media artifacts.
+It is built around five ideas:
 
-It combines deterministic static analysis with optional LLM enrichment and retrieval-augmented grounding against an internal ethics knowledge base PDF.
+1. The editor is the user interface.
+2. The Python backend is invoked over MCP stdio, not HTTP or Streamlit.
+3. Every scan is incremental and centered on the currently changed code region.
+4. Every scan is repository-aware because a generated `DIRECTORY_ANALYSIS.md` is maintained and injected into later reasoning.
+5. Deterministic analysis runs first, and optional LLM reasoning only enriches the result when available.
 
-At a high level, this is a **LangGraph stateful workflow** with:
+At runtime the system does not scan an entire repository on every keystroke. It scans one changed file region at a time, but it augments that region with:
 
-- fan-out parallel file review,
-- optional per-file data-source validation,
-- result aggregation and deduplication,
-- final report synthesis (Markdown + HTML), and
-- checkpointed resumability.
+- nearby previously discovered findings in the same document,
+- repository-wide context from `DIRECTORY_ANALYSIS.md`,
+- local regulatory evidence from ChromaDB,
+- optional web augmentation when confidence is low.
 
-## 2. Layered Architecture
+That architecture produces fast editor feedback while preserving cross-file understanding.
 
-### 2.1 Presentation Layer (Streamlit)
+## 2. Architecture At A Glance
 
-Responsibilities:
+```text
+[Developer in VS Code]
+          |
+          v
+[VS Code Extension (extension.ts)]
+          |
+          v
+[MCP Client (mcpClient.ts)]
+          |
+          v
+[mcp_server.py] -----------------------------------------> [LangSmith]
+          |
+          v
+[LangGraph Compliance Graph] -----------------------------> [LangGraph Checkpointer]
+          |
+          v
+[initialize] -> [code_reviewer] -> [review_file] -> [write_report] -> [Markdown Report (compliance-analysis)]
+                  |
+                  v
+[Repository Analysis (analysis/repository_review.py)] -> [DIRECTORY_ANALYSIS.md]
 
-- collect scan parameters (target dir, provider, model, runtime mode),
-- trigger start/resume scans,
-- stream live progress/events,
-- render final reports,
-- manage KB ingestion/query,
-- expose tracing status.
-
-Files:
-
-- `app.py` (entrypoint, tab orchestration, scan execution)
-- `ui/sidebar.py` (scan controls + provider connection test)
-- `ui/scan_tab.py` (live progress table/log rendering + stream event consumption)
-- `ui/report_tab.py` (final report rendering and download)
-- `ui/kb_tab.py` (KB readiness, rebuild, debug query)
-- `ui/langsmith_tab.py` (tracing status panel)
-
-### 2.2 Orchestration Layer (LangGraph)
-
-Responsibilities:
-
-- define directed workflow and conditional routing,
-- fan-out file-level workloads,
-- invoke node functions over shared state,
-- checkpoint graph execution for resume support.
-
-Files:
-
-- `graphs/compliance_graph.py` (main graph topology + conditional routes)
-- `graphs/checkpointer.py` (SQLite/Postgres checkpointer provisioning + thread discovery)
-
-Related helper subgraph builders:
-
-- `graphs/data_validator_subgraph.py` (ReAct agent builder used by data-source validator)
-- `graphs/file_review_subgraph.py` (file review ReAct builder; currently not wired into runtime path)
-- `graphs/report_writer_subgraph.py` (report writer ReAct builder; currently not wired into runtime path)
-
-### 2.3 Node Execution Layer
-
-Responsibilities:
-
-- perform step-specific business logic over state,
-- emit progress events,
-- persist per-file/final artifacts.
-
-Files:
-
-- `nodes/initialize.py` (validate target dir, create output dir, emit scan-start event)
-- `nodes/fan_out.py` (file discovery, filtering, classification)
-- `nodes/review_file.py` (deterministic analysis + optional LLM assessment + per-file report write)
-- `nodes/validate_data_source.py` (validate referenced URLs/paths, optional LLM override, merge results)
-- `nodes/join_results.py` (dedupe by best-quality result per file)
-- `nodes/write_reports.py` (build and write final report artifacts)
-
-### 2.4 Analysis and Compliance Logic Layer
-
-Responsibilities:
-
-- content extraction and categorization,
-- heuristic rule matching,
-- sensitive-field and data-source extraction,
-- data-source risk validation,
-- LLM-grounded final file-level compliance decisions.
-
-Files:
-
-- `analysis/core.py` (deterministic analysis engine)
-- `analysis/llm_review.py` (chunking, RAG query generation, RAG-grounded final LLM assessment)
-- `analysis/reports.py` (per-file and consolidated report generation)
-
-### 2.5 Knowledge and Retrieval Layer (RAG)
-
-Responsibilities:
-
-- ingest ethics PDF into vector store,
-- query retrieved chunks for regulatory grounding,
-- provide resilient embedding fallback behavior.
-
-Files:
-
-- `rag/ingestor.py` (PDF chunking + embedding + Chroma write)
-- `rag/retriever.py` (retriever singleton, embedding setup, query API)
-- `tools/rag_tool.py` (tool wrapper used by nodes/agents)
-
-### 2.6 External Integration Layer (LLM + Web + Tracing)
-
-Responsibilities:
-
-- instantiate model providers with retry/rate limiting,
-- optional web provenance checks,
-- optional LangSmith trace propagation.
-
-Files:
-
-- `llm/provider_factory.py` (providers: openrouter, groq, ollama_local, ollama_cloud)
-- `tools/web_search_tool.py` (Tavily, optional DDGS fallback)
-- `tracing/langsmith_setup.py` (run config and callback wiring)
-- `utils/compat.py` (safe fallbacks when tool/trace integrations are absent)
-
-### 2.7 I/O, Utility, and Prompt Layer
-
-Responsibilities:
-
-- robust and safe file operations,
-- atomic writes and lock coordination,
-- parsing LLM `<RESULT>{...}</RESULT>` payloads,
-- prompt loading.
-
-Files:
-
-- `tools/filesystem_tools.py` (safe pathing, read/write, command execution, dir listing)
-- `utils/strings.py` (tagged JSON extraction, truncation, filename slugging)
-- `prompts/loader.py` (prompt file loading with cache)
-- `prompts/file_reviewer.md`
-- `prompts/data_source_validator.md`
-- `prompts/report_writer.md`
-- `prompts/orchestrator.md`
-
-### 2.8 Schema and Event Contracts
-
-Responsibilities:
-
-- define typed workflow state payloads and event format.
-
-Files:
-
-- `models/state.py` (TypedDict contracts for findings, file results, state)
-- `models/events.py` (timestamped progress event factory)
-
-### 2.9 Developer and Verification Layer
-
-Responsibilities:
-
-- operational scripts for ingestion and fixture verification,
-- deterministic tests for core components.
-
-Files:
-
-- `scripts/ingest_knowledge_base.py`
-- `scripts/verify_demo_scan.py`
-- `tests/test_analysis_core.py`
-- `tests/test_config_loader.py`
-- `tests/test_join_results.py`
-- `tests/test_llm_review.py`
-- `tests/test_reports.py`
-
-## 3. Runtime Dataflow
-
-```mermaid
-flowchart TD
-    UI[Streamlit UI app.py] --> INIT[initialize_node]
-    INIT --> DISC[fan_out_files_node]
-    DISC -->|Send per file| REV[review_file_node]
-    REV -->|if data sources pending| DSV[validate_data_source_node]
-    REV -->|otherwise| JOIN[join_results_node]
-    DSV --> JOIN
-    JOIN --> WR[write_reports_node]
-    WR --> OUT[compliance-analysis/* reports]
-
-    REV -.optional.-> LLM[analysis.llm_review + llm.provider_factory]
-    REV -.query.-> RAG[ragnode query via tools.rag_tool]
-    DSV -.optional override.-> AGENT[graphs.data_validator_subgraph ReAct agent]
-    DSV -.external context.-> WEB[tools.web_search_tool]
-
-    UI -.thread state.-> CKPT[graphs.checkpointer]
+[review_file] -> [Deterministic Analysis (analysis/core.py)]
+[review_file] -> [LLM Enrichment (analysis/llm_review.py)] -> [Retriever (rag/retriever.py)]
+[LLM Enrichment (analysis/llm_review.py)] -- conditional --> [Web Search Tool]
+[review_file] ---------------------------------------------> [LangSmith]
 ```
 
-## 4. Detailed Workflow by Node
+## 3. Design Principles
 
-### 4.1 initialize
+### 3.1 Incremental By Default
 
-Implementation: `nodes/initialize.py`
+The extension does not send the full file on every edit. It tracks a changed line window, waits for inactivity, extracts a snippet, and sends only that region plus a line offset so findings can be remapped to absolute file lines.
 
-Input fields consumed:
+### 3.2 Deterministic First
 
-- `target_directory`
-- `config.scan.output_dir`
+`analysis/core.py` always produces a baseline result. LLM review is additive, not foundational. If the model layer fails, deterministic findings still exist.
 
-Outputs:
+### 3.3 Repository-Aware Reasoning
 
-- `_analysis_output_dir`
-- reset file discovery collections (`all_files`, `skipped_files`, `file_categories`)
-- `scan_complete=False`, `scan_error=None`
-- progress event: `scan_started`
+The `code_reviewer` stage creates and maintains `DIRECTORY_ANALYSIS.md`. That file is agent-generated context and is never itself treated as a review target.
 
-Failure mode:
+### 3.4 Retrieval-Grounded Judgement
 
-- returns `scan_error` if target directory is invalid.
+Compliance claims are expected to be grounded in local RAG evidence first. Web search is optional and only used when relevancy or context quality is weak.
 
-### 4.2 fan_out_files
+### 3.5 Safe Degradation
 
-Implementation: `nodes/fan_out.py`
+If RAG ingestion is unavailable, the system continues. If the configured provider/model is stale, the backend normalizes it to a valid configured fallback. If repository analysis fails, file review still proceeds without that extra context.
 
-Core mechanics:
+## 4. Runtime Boundary
 
-- uses `list_directory_robust()` for recursive discovery,
-- excludes generated output directory,
-- applies extension/size filters from config,
-- categorizes each retained file using `analysis.core.categorize_file()`.
+### 4.1 What The System Reviews
 
-Outputs:
+Only these file classes are treated as compliance review targets:
 
-- `all_files`, `skipped_files`, `file_categories`
-- progress event: `discovery_complete`
+- `source_code`
+- `document`
+- `structured_data`
 
-Routing behavior (in graph):
+This is enforced in [analysis/core.py](analysis/core.py).
 
-- if no files => direct `join_results`
-- else => `Send(...)` fan-out into per-file `review_file` tasks.
+Representative extensions:
 
-### 4.3 review_file
+- Source code: `.py`, `.js`, `.ts`, `.tsx`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.cs`, `.rb`, `.php`, `.swift`, `.kt`, `.sh`
+- Documents: `.md`, `.txt`, `.rst`, `.pdf`, `.docx`, `.doc`, `.html`, `.htm`
+- Structured data: `.csv`, `.tsv`, `.json`, `.jsonl`, `.yaml`, `.yml`, `.xml`
 
-Implementation: `nodes/review_file.py`
+### 4.2 What The System Excludes
 
-Pipeline:
+The architecture intentionally excludes:
 
-1. deterministic analysis via `analysis.core.analyze_file()`
-2. optional LLM pass via `analysis.llm_review.assess_file_with_llm()`
-3. write per-file report via `analysis.reports.build_file_report_markdown()`
-4. stage pending data sources for validation.
+- `.env` files
+- virtual environments
+- `node_modules`
+- `.git`
+- cache/build artifacts
+- generated compliance reports
+- generated `DIRECTORY_ANALYSIS.md`
+- config-only files such as `.toml`, `.ini`, `.cfg`, `.conf`, `.properties`
+- media and binary files
 
-Important behavior:
+This exclusion matters in two places:
 
-- if runtime provider/model are set to unsupported values (e.g. deterministic mode), `try_create_llm()` returns `None`; deterministic results are kept.
-- catches exceptions and emits a fallback `ERROR` file result rather than crashing the graph.
+1. The extension refuses to schedule live scans for unsupported files.
+2. The backend refuses to review unsupported files even if a caller sends them directly.
 
-Outputs:
+## 5. Active Components
 
-- `file_results` append
-- `_pending_data_sources`
-- `_current_file_result`
-- progress events: `file_started`, `file_complete`
+## 5.1 VS Code Presentation Layer
 
-### 4.4 validate_data_source
+Primary files:
 
-Implementation: `nodes/validate_data_source.py`
+- `vscode-extension/src/extension.ts`
+- `vscode-extension/src/mcpClient.ts`
+- `vscode-extension/src/diagnostics.ts`
+- `vscode-extension/src/statusBar.ts`
+- `vscode-extension/package.json`
 
-Pipeline:
+Responsibilities:
 
-1. for each pending source, run deterministic `validate_data_source_reference()`
-2. optionally invoke a ReAct validator agent (`graphs/data_validator_subgraph.py`) for override fields
-3. merge validated source outcomes back into file results with `merge_data_source_results()`
-4. rewrite updated per-file report markdown.
+- watch editor changes,
+- debounce scans,
+- bootstrap `DIRECTORY_ANALYSIS.md` on activation,
+- exclude unsupported targets,
+- send incremental scan requests to the backend,
+- stream progress and violation events,
+- render diagnostics inline,
+- surface status in the status bar,
+- expose manual commands for directory analysis creation and refresh.
 
-Output effects:
+Important commands:
 
-- updates `file_results`
-- emits `data_source_found` and `data_source_validated` events.
+- `aiEthics.openProblems`
+- `aiEthics.showOutput`
+- `aiEthics.createDirectoryAnalysis`
+- `aiEthics.refreshDirectoryAnalysis`
 
-### 4.5 join_results
+Important runtime behaviors:
 
-Implementation: `nodes/join_results.py`
+- Startup calls `refresh_directory_analysis(force=false)` to ensure `DIRECTORY_ANALYSIS.md` exists.
+- Live scans only run after 5 seconds of inactivity by default.
+- `DIRECTORY_ANALYSIS.md` is explicitly excluded from live scanning.
+- Results are discarded if the document changed again before the scan completed.
+
+## 5.2 MCP Bridge
+
+Primary file:
+
+- `mcp_server.py`
+
+Responsibilities:
+
+- expose backend functionality as MCP tools,
+- build the initial graph state,
+- normalize provider/model selection,
+- stream LangGraph events back to the extension,
+- translate final graph output into MCP structured content,
+- emit periodic heartbeats during long scans,
+- expose manual repository-analysis refresh.
+
+Active MCP tools:
+
+- `check_file`
+- `refresh_directory_analysis`
+
+`check_file` is the main real-time scan entrypoint. `refresh_directory_analysis` is used by startup bootstrap and manual refresh commands.
+
+## 5.3 Orchestration Layer
+
+Primary files:
+
+- `graphs/compliance_graph.py`
+- `graphs/checkpointer.py`
+- `models/state.py`
+- `models/events.py`
+
+The active graph is linear:
+
+```text
+[START] -> [initialize] -> [code_reviewer] -> [review_file] -> [write_report] -> [END]
+```
+
+This is intentionally simple. The system no longer uses the older multi-node fan-out pipeline described in earlier documents. The graph now models one compliance check for one file/snippet at a time.
+
+`graphs/checkpointer.py` provides:
+
+- SQLite checkpointing by default,
+- optional Postgres checkpointing,
+- persistent thread ids for resumability or audit.
+
+## 5.4 Repository Context Builder
+
+Primary file:
+
+- `analysis/repository_review.py`
+
+Logical role:
+
+- `code_reviewer`
+
+This stage is the repository-wide analyzer the user requested. It is called `code_reviewer` in the LangGraph topology, but its implementation is deterministic rather than a separate tool-calling LLM agent.
+
+Responsibilities:
+
+- resolve the workspace root,
+- walk the repository recursively,
+- apply exclusion rules,
+- consider only reviewable file classes,
+- infer per-file type, language, symbols, schema hints, local references, and predicted role,
+- build directory summaries and cross-file relationships,
+- write `DIRECTORY_ANALYSIS.md`,
+- cache a snapshot hash in an HTML comment header,
+- reuse the previous file when the repository has not changed,
+- update automatically when files are added, removed, or modified.
+
+Generated artifact:
+
+- `DIRECTORY_ANALYSIS.md` in the workspace root
+
+Key design detail:
+
+`DIRECTORY_ANALYSIS.md` is both output and input. It is produced by the backend for its own future use, but it is never treated as codebase source material to review.
+
+## 5.5 Deterministic File Review Engine
+
+Primary file:
+
+- `analysis/core.py`
+
+Responsibilities:
+
+- classify the file,
+- skip unsupported targets,
+- extract schema hints,
+- detect local and external data sources,
+- identify sensitive fields,
+- apply heuristic ethics/compliance rules,
+- build a baseline `FileResult`,
+- generate a human-readable summary,
+- infer likely real-world output of the code or file.
+
+Important behaviors:
+
+- Scans are deterministic.
+- Review eligibility is enforced here, not only in the extension.
+- `DIRECTORY_ANALYSIS.md` is skipped as an agent-generated artifact.
+- Config/media/binary files are skipped.
+
+This layer is the hard baseline that exists even when the LLM stack is unavailable.
+
+## 5.6 LLM Enrichment Layer
+
+Primary files:
+
+- `nodes/review_file.py`
+- `analysis/llm_review.py`
+- `analysis/agentic_runtime.py`
+- `llm/provider_factory.py`
+
+Responsibilities:
+
+- create an LLM client when a non-deterministic provider is configured,
+- combine baseline findings with nearby reviewed context and repository context,
+- retrieve regulatory grounding from ChromaDB,
+- self-grade the quality of the answer,
+- optionally augment with web search,
+- map LLM output into the strict `FileResult` contract,
+- emit retrieval evidence and web evidence for later reporting.
+
+This layer has two paths:
+
+1. Standard LangChain model invocation through `ChatOpenAI`, `ChatGroq`, or `ChatOllama`
+2. Optional `pydantic_ai` route for Groq-backed tool-using review
+
+The active file review node:
+
+- runs deterministic analysis first,
+- attempts LLM enrichment only if the file was not skipped,
+- keeps deterministic results if the LLM fails,
+- remaps findings back to absolute lines with `line_offset`.
+
+## 5.7 Retrieval Layer
+
+Primary files:
+
+- `rag/retriever.py`
+- `rag/ingestor.py`
+- `rag/storage.py`
+
+Responsibilities:
+
+- maintain the ChromaDB-backed knowledge store,
+- embed and retrieve chunks from `knowledge/ai_ethics_knowledge_base.pdf`,
+- expand compliance queries,
+- compute confidence and trust scores,
+- deduplicate retrieved evidence,
+- serve top-ranked regulatory context to LLM review.
+
+Important design choices:
+
+- Retrieval is local-first.
+- Query expansion is domain-specific.
+- Trust scoring combines embedding distance, query overlap, regulatory vocabulary, and metadata quality.
+- If the collection is unavailable, retrieval gracefully returns no hits.
+
+## 5.8 Reporting Layer
+
+Primary files:
+
+- `nodes/write_report.py`
+- `analysis/reports.py`
+
+Responsibilities:
+
+- resolve the workspace output directory,
+- write one Markdown compliance report per reviewed file,
+- include deterministic and agentic fields in the final artifact,
+- preserve evidence provenance.
+
+Generated report location:
+
+- `compliance-analysis/<file>_analysis_report.md`
+
+Reports are written atomically through `tools/filesystem_tools.py`.
+
+## 5.9 Observability And Tracing
+
+Primary files:
+
+- `tracing/langsmith_setup.py`
+- `models/events.py`
+
+Responsibilities:
+
+- attach LangSmith callbacks when enabled,
+- name runs consistently,
+- tag runs with provider/model metadata,
+- resolve LangSmith URLs for completed scans,
+- emit consistent progress events and custom events.
+
+The LangGraph run and nested nodes are visible in LangSmith. That includes `initialize`, `code_reviewer`, `review_file`, `write_report`, and nested retrieval/model calls.
+
+## 5.10 Filesystem Safety Layer
+
+Primary file:
+
+- `tools/filesystem_tools.py`
+
+Responsibilities:
+
+- safe path resolution,
+- binary detection,
+- retrying text reads,
+- atomic writes via temp file + move,
+- file locks for report and artifact generation.
+
+This layer is why generated artifacts such as reports and `DIRECTORY_ANALYSIS.md` can be updated safely even while the extension is active.
+
+## 6. Data Contracts
+
+The central runtime contract is `ComplianceState` in `models/state.py`.
+
+Important state fields:
+
+- `file_path`: absolute target path
+- `file_content`: snippet or full content under review
+- `llm_provider`: normalized provider name
+- `llm_model`: normalized model name
+- `line_offset`: offset used to convert snippet-relative findings to absolute lines
+- `reviewed_context`: nearby prior findings from the same editor document
+- `agentic_context`: repository-wide `DIRECTORY_ANALYSIS.md` content
+- `directory_analysis_path`: path of the generated repository context artifact
+- `workspace_root`: resolved repository root
+- `file_result`: final result for this check
+- `progress_events`: additive timeline payloads
+- `final_report_md`: rendered report content
+- `langsmith_run_id`, `langsmith_run_url`: tracing metadata
+
+The final per-file output contract is `FileResult`.
+
+Important `FileResult` fields:
+
+- `status`
+- `summary`
+- `predicted_output`
+- `findings`
+- `agentic_grade`
+- `retrieval_evidence`
+- `web_search_evidence`
+- `report_path`
+
+## 7. Repository Analysis Lifecycle
+
+```text
+[Activation or scan request]
+         |
+         v
+[Resolve workspace root]
+         |
+         v
+[Does DIRECTORY_ANALYSIS.md exist?]
+    | Yes                             | No
+    v                                 v
+[Compute snapshot hash]       [Walk repository recursively]
+    |
+    v
+[Hash changed?]
+   | No                        | Yes
+   v                           v
+[Load existing DIRECTORY_ANALYSIS.md]    [Walk repository recursively]
+            \                    /
+             \                  /
+              v                v
+[Analyse only source_code, document, structured_data]
+         |
+         v
+[Build directory summaries, file summaries, relationships]
+         |
+         v
+[Write DIRECTORY_ANALYSIS.md with metadata header]
+         |
+         v
+[Inject markdown into later file reviews]
+```
+
+Important lifecycle triggers:
+
+- automatic startup bootstrap from the extension,
+- automatic refresh during the `code_reviewer` node,
+- manual refresh via VS Code command.
+
+Important invariants:
+
+- the file is created once when absent,
+- reused when the repository snapshot has not changed,
+- regenerated when the repository changes,
+- excluded from subsequent review targets.
+
+## 8. Real-Time Startup Flow
+
+```text
+User -> VS Code Host: Open workspace
+VS Code Host -> Extension: activate()
+Extension -> MCP Client: connect over stdio
+Extension -> mcp_server.py: refresh_directory_analysis(force=false)
+mcp_server.py -> repository_review.py: ensure_directory_analysis()
+repository_review.py -> mcp_server.py: existing or newly written DIRECTORY_ANALYSIS.md
+mcp_server.py -> Extension: structured result + progress
+Extension -> User: output log and optional open document
+```
+
+Startup is not a compliance scan. It is a repository-context bootstrap.
+
+## 9. Real-Time Edit Execution Flow
+
+```text
+User -> VS Code Extension: Edit supported file
+VS Code Extension -> VS Code Extension: Merge changed window and debounce
+VS Code Extension -> VS Code Extension: Build snippet + reviewed_context
+VS Code Extension -> MCP Client: check_file(file_path, snippet, line_offset, reviewed_context, provider, model)
+MCP Client -> MCP Server: stdio tool request
+MCP Server -> MCP Server: normalize provider/model
+MCP Server -> LangGraph: start ComplianceCheck
+LangGraph -> code_reviewer: ensure DIRECTORY_ANALYSIS.md exists and is current
+code_reviewer -> LangGraph: agentic_context + analysis path
+LangGraph -> review_file: review snippet
+review_file -> analysis/core.py: deterministic baseline analysis
+review_file -> analysis/llm_review.py: optional enrichment with repository + nearby context
+analysis/llm_review.py -> rag/retriever.py: retrieve local regulatory evidence
+analysis/llm_review.py -> analysis/llm_review.py: self-grade relevancy / faithfulness / context quality
+
+If context is insufficient:
+analysis/llm_review.py -> web_search_tool: optional web search
+web_search_tool -> analysis/llm_review.py: external context
+
+analysis/llm_review.py -> review_file: enriched FileResult
+review_file -> MCP Client: violation_found / progress events
+LangGraph -> write_report: write Markdown report
+write_report -> MCP Client: final result
+MCP Client -> VS Code Extension: scan_complete + structured output
+VS Code Extension -> User: diagnostics, status bar, output log
+```
+
+## 10. Detailed Node Behavior
+
+## 10.1 `initialize`
+
+File:
+
+- `nodes/initialize.py`
 
 Purpose:
 
-- resolve duplicates from parallel paths by selecting the best-quality result for each file based on a quality tuple:
-  - status score,
-  - absence of error,
-  - finding count,
-  - validated source count,
-  - report write presence.
+- resolve the output directory relative to the current file,
+- ensure the report directory exists,
+- emit a `scan_started` progress event.
 
-Outputs:
+This node does not inspect code. It establishes the filesystem context for the rest of the run.
 
-- `_deduped_file_results`
-- progress event: `aggregation_complete`
+## 10.2 `code_reviewer`
 
-### 4.6 write_reports
+File:
 
-Implementation: `nodes/write_reports.py`
+- `nodes/review_repository.py`
 
-Actions:
+Purpose:
 
-- builds report context via `build_report_context()`
-- generates markdown via `build_final_report_markdown()`
-- generates HTML via `build_final_report_html()`
-- atomically writes:
-  - `final_compliance_report.md`
-  - `final_compliance_report.html`
+- guarantee availability of repository context,
+- emit repository-analysis progress and readiness events,
+- store the repository markdown in `agentic_context`.
 
-Outputs:
+Failure semantics:
 
-- `final_report_md`, `final_report_html`
-- `scan_complete=True`
-- progress event: `scan_complete`
+- if repository analysis fails, the node returns blank context,
+- later file review still proceeds.
 
-## 5. State Model and Data Contracts
+## 10.3 `review_file`
 
-Source: `models/state.py`
+File:
 
-Key entities:
+- `nodes/review_file.py`
 
-- `Finding`: severity, location, regulations, jurisdictions, KB citation fields
-- `DataSourceResult`: source verdict and provenance metadata
-- `FileResult`: per-file status + summary + findings + data-source review
-- `ProgressEvent`: event log payload
-- `ComplianceState`: full graph state, including internal transient keys prefixed with `_`
+Purpose:
 
-Aggregation semantics:
+- perform the actual compliance review for the current file/snippet.
 
-- `file_results` and `progress_events` use additive reducers (operator.add), enabling safe accumulation from parallel fan-out branches.
+Execution order:
 
-## 6. Deterministic Analysis Engine
+1. Emit `file_started`
+2. Run deterministic review
+3. Optionally create an LLM
+4. If available, enrich with RAG-first agentic review
+5. Apply snippet line offsets
+6. Emit `agentic_grade`, retrieval, and web events
+7. Emit one `violation_found` event per finding
+8. Emit `file_complete`
 
-Source: `analysis/core.py`
+This node is the center of runtime behaviour.
 
-Major capabilities:
+## 10.4 `write_report`
 
-- file type categorization and language inference,
-- text extraction (including DOCX support),
-- heuristic rule matching (`RULES`) for known risk patterns,
-- schema and sensitive-field inference,
-- extraction of explicit data source references (URLs and local paths),
-- deterministic data-source risk validation for URL/local paths,
-- merging source verdicts into findings/status.
+File:
 
-Notable policy/rule modeling:
+- `nodes/write_report.py`
 
-- explicit rule records with code/title/severity/query/regulations/jurisdictions,
-- severity-driven status derivation (`FAIL`, `WARN`, `PASS`),
-- additional structured-data sensitive-attribute rule when multiple sensitive signals are detected.
+Purpose:
 
-## 7. LLM Enrichment and Grounded Decisioning
+- build final Markdown for the current file,
+- write it atomically to `compliance-analysis`,
+- attach `report_path` to the final result.
 
-Source: `analysis/llm_review.py`
+This node closes the loop between live diagnostics and durable artifacts.
 
-Pipeline design:
+## 11. Context Assembly Model
 
-1. if large file, chunk and summarize all chunks (`_summarize_large_file`)
-2. generate targeted legal/RAG queries (`_generate_rag_queries`)
-3. retrieve and de-duplicate KB hits (`_retrieve_rag_hits`)
-4. ask final assessment model with strict JSON schema and citation requirement
-5. validate/normalize findings and enforce status monotonicity relative to severity.
+The LLM does not reason over the snippet in isolation. The context stack is layered in this order:
 
-Guardrails:
+```text
+[Changed snippet]
+    |
+    v
+[Baseline deterministic summary]
+    |
+    v
+[Nearby reviewed_context]
+    |
+    v
+[Repository-wide DIRECTORY_ANALYSIS.md]
+    |
+    v
+[Local RAG excerpts]
+    |
+    v
+[Conditional web excerpts]
+    |
+    v
+[Final FileResult]
+```
 
-- no findings without structured parse,
-- no weaker final status than severity-derived status,
-- PASS when no grounded violation is established,
-- carries forward deterministic baseline notes with provenance notes from the LLM phase.
+Interpretation:
 
-## 8. RAG Architecture
+- The snippet gives local syntax and lines.
+- The baseline summary anchors the first interpretation.
+- Nearby reviewed context preserves continuity across repeated edits.
+- `DIRECTORY_ANALYSIS.md` supplies cross-file intent and repository purpose.
+- RAG adds regulatory grounding.
+- Web is only used when needed.
 
-### 8.1 Ingestion
+## 12. Provider And Model Resolution
 
-Source: `rag/ingestor.py`
+Provider/model selection is intentionally normalized before model creation.
 
-Flow:
+Primary file:
 
-- open PDF using `fitz` (PyMuPDF),
-- split per page text into chunks,
-- generate chunk IDs (`p{page}_c{chunk}`),
-- embed chunks, write vectors and metadata to Chroma persistent collection,
-- clear retriever singleton cache after rebuild.
+- `llm/provider_factory.py`
 
-### 8.2 Retrieval
+Responsibilities:
 
-Source: `rag/retriever.py`
+- map provider to backend adapter,
+- maintain a cache of instantiated LLMs,
+- enumerate configured models,
+- normalize stale or invalid provider/model selections,
+- fall back to a valid configured model when the requested one is unavailable.
 
-Features:
+This is important because the extension can hold a stale saved model value. The backend now resolves that mismatch before any OpenRouter or OpenAI-compatible request is made.
 
-- lazy singleton instances keyed by `(persist_dir, collection_name)`
-- pluggable embedding provider with resilient fallback chain:
-  - OpenAI/Ollama embeddings
-  - hash-based offline embedding fallback (`HashingEmbeddings`)
-- returns chunk text + metadata + distance score.
+## 13. Progress, Events, And Diagnostics
 
-### 8.3 Tool Interface
+The system emits two classes of runtime signals:
 
-Source: `tools/rag_tool.py`
+1. additive progress events stored in graph state
+2. custom LangChain events streamed immediately through MCP
 
-Provides a stable callable tool abstraction for node/agent usage and default config loading when explicit config is absent.
+Important streamed events:
 
-## 9. LLM Provider Strategy
+- `scan_started`
+- `directory_analysis_started`
+- `directory_analysis_ready`
+- `file_started`
+- `agentic_grade`
+- `agentic_retrieval`
+- `agentic_web_search`
+- `violation_found`
+- `file_complete`
+- `scan_complete`
 
-Source: `llm/provider_factory.py`
+The extension consumes those events to:
 
-Supported providers:
+- update status bar state,
+- add diagnostics before the final result arrives,
+- keep the output panel informative during long-running scans.
 
-- `openrouter`
-- `groq`
-- `ollama_local`
-- `ollama_cloud`
+`vscode-extension/src/diagnostics.ts` maps compliance severities to native VS Code severities and attaches remedies as related information.
 
-Capabilities:
+## 14. Generated Artifacts
 
-- provider-specific API key expectation checks,
-- local Ollama model discovery via CLI,
-- in-memory cache by `(provider, model, base_url, temperature)`,
-- optional LangChain rate limiter,
-- retry wrapping when provider client supports `with_retry`,
-- safe `try_create_llm()` for non-fatal fallback to deterministic behavior.
+Generated files and stores:
 
-## 10. Filesystem and Safety Model
+- `DIRECTORY_ANALYSIS.md`
+- `compliance-analysis/*.md`
+- `.langgraph_checkpoints.db`
+- `.chroma_db/`
 
-Source: `tools/filesystem_tools.py`
+Artifact rules:
 
-Protection and reliability mechanisms:
+- `DIRECTORY_ANALYSIS.md` is generated for context, not reviewed as source material.
+- `compliance-analysis/` is output, not repository input.
+- checkpoint and vector stores are operational state, not review targets.
 
-- path traversal protection (`safe_resolve_path` with optional root constraint),
-- robust listing and read retries,
-- binary detection during reads,
-- atomic write with temporary file + move,
-- optional file lock (`.lock`) for concurrent writes,
-- constrained shell execution with banned dangerous pattern checks.
+## 15. Failure Handling And Fallbacks
 
-This underpins safe report generation and tooling calls under concurrent graph execution.
+### 15.1 Unsupported Target
 
-## 11. Reporting Architecture
+If the file is not source code, a document, or structured data, the result is `SKIPPED`.
 
-### 11.1 Per-File Reports
+### 15.2 Repository Analysis Failure
 
-Source: `analysis/reports.py` -> `build_file_report_markdown()`
+If `DIRECTORY_ANALYSIS.md` cannot be built, `code_reviewer` returns empty context and scan execution continues.
 
-Sections include:
+### 15.3 RAG Failure
 
-- file overview,
-- summary,
-- predicted output,
-- findings with regulations/jurisdictions/KB citation,
-- data source table,
-- operational notes.
+If ingestion or collection initialization fails, the system continues without retrieval evidence.
 
-### 11.2 Final Consolidated Reports
+### 15.4 LLM Failure
 
-Source: `analysis/reports.py`
+If provider initialization fails or invocation raises, the deterministic baseline result is preserved.
 
-- `build_report_context()` computes executive and aggregate structures
-- `build_final_report_markdown()` emits markdown compliance dossier
-- `build_final_report_html()` renders template
+### 15.5 Stale Editor State
 
-Template source:
+If the document changed while a scan was in flight, the extension discards the stale result instead of surfacing it.
 
-- `templates/report.html.j2`
+### 15.6 Invalid Model Configuration
 
-Output location:
+If a saved provider/model pair is invalid, the backend normalizes it to a configured fallback before attempting the LLM call.
 
-- `<target_dir>/compliance-analysis/`
+## 16. Active Runtime Files
 
-## 12. Checkpointing and Resume
+The following files form the active runtime path:
 
-Source: `graphs/checkpointer.py`
-
-Modes:
-
-- SQLite (default)
-- Postgres (if configured via env)
-
-Behavior:
-
-- shared saver cache per backend endpoint/path,
-- SQLite thread-safe connection creation (`check_same_thread=False`),
-- thread ID enumeration from checkpoint tables for UI resume dropdown.
-
-## 13. Observability and Tracing
-
-Sources:
-
+- `vscode-extension/src/extension.ts`
+- `vscode-extension/src/mcpClient.ts`
+- `vscode-extension/src/diagnostics.ts`
+- `vscode-extension/src/statusBar.ts`
+- `mcp_server.py`
+- `graphs/compliance_graph.py`
+- `graphs/checkpointer.py`
+- `nodes/initialize.py`
+- `nodes/review_repository.py`
+- `nodes/review_file.py`
+- `nodes/write_report.py`
+- `analysis/repository_review.py`
+- `analysis/core.py`
+- `analysis/llm_review.py`
+- `analysis/agentic_runtime.py`
+- `analysis/reports.py`
+- `llm/provider_factory.py`
+- `rag/retriever.py`
+- `rag/ingestor.py`
+- `rag/storage.py`
+- `tools/filesystem_tools.py`
+- `tools/web_search_tool.py`
+- `models/state.py`
+- `models/events.py`
 - `tracing/langsmith_setup.py`
-- `utils/compat.py`
-- `ui/langsmith_tab.py`
-
-Design:
-
-- tracing defaults to enabled unless env flags explicitly disable,
-- gracefully degrades when LangSmith packages/config are unavailable,
-- graph run config includes thread, provider/model tags, and target-dir metadata.
-
-## 14. Configuration System
-
-Sources:
-
 - `config_loader.py`
 - `config.yaml`
 
-Capabilities:
+## 17. Auxiliary Or Legacy Files
 
-- deep merge from defaults + YAML,
-- alias normalization (`skip_extensions` <-> `excluded_extensions`, etc.),
-- compatibility hydration for knowledge/rag/provider defaults.
+Some repository files exist but are not part of the active runtime path described above.
 
-Key domains:
+Examples:
 
-- `llm`, `scan`, `rag`, `review`, `filesystem`, `checkpoint`, `web_search`, `langsmith`.
+- `graphs/file_review_subgraph.py`
+- prompt assets for older or exploratory subgraph-based approaches
+- older PRD documents
+- demo fixtures under `demo_violations/`
 
-## 15. Testing and Validation Strategy
+These files remain useful for experimentation, tests, or documentation, but they are not the live execution path used by the VS Code extension.
 
-Representative tests:
+## 18. Summary
 
-- `tests/test_analysis_core.py`: source/path extraction, deterministic rule triggering, citation propagation
-- `tests/test_llm_review.py`: grounded FAIL/PASS behavior with stubbed LLM
-- `tests/test_reports.py`: key report section generation
-- `tests/test_join_results.py`: result quality dedupe behavior
-- `tests/test_config_loader.py`: config merging and alias normalization
+The architecture is now centered on one practical workflow:
 
-Operational scripts:
+1. bootstrap repository context,
+2. watch the editor,
+3. scan only changed regions,
+4. inject repository-wide understanding,
+5. ground compliance reasoning in RAG,
+6. optionally enrich with LLM and web evidence,
+7. stream findings back to VS Code immediately,
+8. persist a report for the reviewed file.
 
-- `scripts/ingest_knowledge_base.py`: KB rebuild + retrieval probe
-- `scripts/verify_demo_scan.py`: end-to-end fixture scan with deterministic retry fallback
+That combination gives the system three important properties at once:
 
-## 16. Component-to-File Correlation Matrix
-
-| Architectural Component | Primary Files |
-|---|---|
-| App bootstrap and tab container | `app.py` |
-| User controls and run initiation | `ui/sidebar.py`, `ui/scan_tab.py` |
-| Graph topology and conditional routing | `graphs/compliance_graph.py` |
-| Checkpoint backend and resume IDs | `graphs/checkpointer.py` |
-| Initialization node | `nodes/initialize.py` |
-| File discovery and fan-out node | `nodes/fan_out.py` |
-| File review node | `nodes/review_file.py` |
-| Data source validation node | `nodes/validate_data_source.py` |
-| Aggregation node | `nodes/join_results.py` |
-| Final report writer node | `nodes/write_reports.py` |
-| Deterministic static analysis core | `analysis/core.py` |
-| LLM file-level grounding logic | `analysis/llm_review.py` |
-| Reporting builders | `analysis/reports.py`, `templates/report.html.j2` |
-| LLM provider adapters | `llm/provider_factory.py` |
-| RAG ingest and query | `rag/ingestor.py`, `rag/retriever.py`, `tools/rag_tool.py` |
-| Filesystem and shell tools | `tools/filesystem_tools.py` |
-| Web provenance checks | `tools/web_search_tool.py` |
-| Prompt loading and prompt assets | `prompts/loader.py`, `prompts/*.md` |
-| State/event typed contracts | `models/state.py`, `models/events.py` |
-| Trace integration | `tracing/langsmith_setup.py`, `utils/compat.py` |
-| Runtime config merge and defaults | `config_loader.py`, `config.yaml` |
-| Scripts for ops and smoke verification | `scripts/ingest_knowledge_base.py`, `scripts/verify_demo_scan.py` |
-| Automated test suite | `tests/test_*.py` |
-
-## 17. Current Design Strengths and Practical Constraints
-
-Strengths:
-
-- deterministic-first behavior means scans can still run when LLM/web integrations fail,
-- graph fan-out provides scalable per-file parallelization,
-- additive state reducers and dedupe stage make concurrency robust,
-- per-file and final artifacts are generated atomically,
-- RAG citations are part of finding schema for traceable compliance rationale.
-
-Constraints / implementation nuances:
-
-- `graphs/file_review_subgraph.py` and `graphs/report_writer_subgraph.py` are currently helper builders but not active in the default graph path,
-- deterministic mode is implemented by selecting a provider/model that intentionally fails provider instantiation, causing safe fallback to deterministic-only behavior,
-- quality of compliance verdicts remains bounded by static pattern coverage (`analysis/core.py`) and RAG corpus breadth.
-
-## 18. End-to-End Execution Summary
-
-1. User selects target/provider/model in Streamlit.
-2. Graph initializes output and scan state.
-3. Files are discovered, filtered, categorized.
-4. Each file is reviewed deterministically; optionally refined by LLM grounded via RAG.
-5. Referenced data sources are validated deterministically and optionally refined by agentic LLM.
-6. Duplicate/partial branch results are quality-deduped.
-7. Consolidated markdown/html reports are generated and persisted.
-8. UI shows live status/logs and renders downloadable outputs.
-
-This architecture yields a resilient, inspectable compliance pipeline suitable for mixed-codebase scanning with optional agentic enrichment rather than strict dependence on model availability.
+- it feels fast in the editor,
+- it remains explainable and traceable,
+- it reasons with a whole-repository mental model instead of isolated snippets.

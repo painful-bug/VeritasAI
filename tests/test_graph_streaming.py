@@ -59,6 +59,7 @@ model.fit(X, y)
     assert output["scan_complete"] is True
     assert output["file_result"]["report_path"]
     assert Path(output["file_result"]["report_path"]).exists()
+    assert (tmp_path / "DIRECTORY_ANALYSIS.md").exists()
     json.dumps(output["file_result"])
 
 

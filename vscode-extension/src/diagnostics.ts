@@ -23,6 +23,16 @@ export interface FileResult {
   findings: Finding[];
   report_path: string | null;
   error: string | null;
+  agentic_grade?: {
+    relevancy: number;
+    faithfulness: number;
+    context_quality: number;
+    needs_web_search: boolean;
+    explanation: string;
+    answer: string;
+    retrieval_confidence: number;
+    trust_level: string;
+  } | null;
 }
 
 export interface CheckFileResult {

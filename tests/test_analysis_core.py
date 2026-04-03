@@ -38,3 +38,32 @@ model.fit(X, y)
     assert any(finding["severity"] == "HIGH" for finding in result["findings"])
     assert any(finding["rag_chunk_id"] == "p7_c2" and finding["rag_page"] == 7 for finding in result["findings"])
     assert sources
+
+
+def test_analyze_file_skips_directory_analysis_artifact(tmp_path: Path) -> None:
+    file_path = tmp_path / "DIRECTORY_ANALYSIS.md"
+    file_path.write_text("# Directory Analysis\n", encoding="utf-8")
+
+    result, sources = analyze_file(
+        str(file_path),
+        config={"directory_analysis": {"filename": "DIRECTORY_ANALYSIS.md"}},
+        file_content=file_path.read_text(encoding="utf-8"),
+    )
+
+    assert result["status"] == "SKIPPED"
+    assert "agent-generated repository context" in result["summary"]
+    assert sources == []
+
+
+def test_analyze_file_skips_non_target_config_files(tmp_path: Path) -> None:
+    file_path = tmp_path / "settings.toml"
+    file_path.write_text("model = 'demo'\n", encoding="utf-8")
+
+    result, sources = analyze_file(
+        str(file_path),
+        file_content=file_path.read_text(encoding="utf-8"),
+    )
+
+    assert result["status"] == "SKIPPED"
+    assert "only source code, documents, and structured data are reviewed" in result["summary"]
+    assert sources == []

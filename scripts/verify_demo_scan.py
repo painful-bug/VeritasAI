@@ -86,6 +86,16 @@ def main() -> int:
 
     print(f"Status: {file_result['status']}")
     print(f"Summary: {file_result['summary']}")
+    grade = file_result.get("agentic_grade")
+    if isinstance(grade, dict):
+        print(
+            "Self-grade: "
+            f"relevancy={grade.get('relevancy', 0.0):.2f} "
+            f"faithfulness={grade.get('faithfulness', 0.0):.2f} "
+            f"context_quality={grade.get('context_quality', 0.0):.2f} "
+            f"needs_web_search={grade.get('needs_web_search', False)} "
+            f"trust={grade.get('trust_level', 'low')}"
+        )
     for finding in file_result.get("findings", []):
         print(f"- [{finding['severity']}] {finding['regulation_name']}")
         print(f"  {finding['explanation']}")
