@@ -91,19 +91,26 @@ function getDebounceMs(): number {
 }
 
 function getConfiguredProvider(): string {
-  return getConfiguration().get<string>('provider', 'ollama_cloud');
+  return getConfiguration().get<string>('provider')?.trim() || 'openrouter';
 }
 
 function getConfiguredModel(): string {
-  return getConfiguration().get<string>('model', 'glm4:cloud');
+  return getConfiguration().get<string>('model')?.trim() || 'nvidia/nemotron-3-super-120b-a12b:free';
+}
+
+function getWorkspaceRootForDocument(document: vscode.TextDocument): string | undefined {
+  return vscode.workspace.getWorkspaceFolder(document.uri)?.uri.fsPath;
 }
 
 function getWorkspaceTargetPath(): string | undefined {
-  const activePath = vscode.window.activeTextEditor?.document.uri.fsPath;
-  if (activePath) {
-    return activePath;
+  const activeDocument = vscode.window.activeTextEditor?.document;
+  if (activeDocument) {
+    const workspaceRoot = getWorkspaceRootForDocument(activeDocument);
+    if (workspaceRoot) {
+      return workspaceRoot;
+    }
   }
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? activeDocument?.uri.fsPath;
 }
 
 function isSupportedFilePath(filePath: string): boolean {
@@ -464,6 +471,13 @@ async function openSetup(): Promise<void> {
   }
 }
 
+async function buildServerEnv(): Promise<NodeJS.ProcessEnv> {
+  const overrides = await secretManager.buildProcessEnv();
+  overrides.AI_ETHICS_DEFAULT_PROVIDER = getConfiguredProvider();
+  overrides.AI_ETHICS_DEFAULT_MODEL = getConfiguredModel();
+  return overrides;
+}
+
 function scheduleCheck(document: vscode.TextDocument): void {
   if (!isEnabled() || !isSupportedDocument(document)) {
     return;
@@ -543,6 +557,7 @@ async function runComplianceCheck(document: vscode.TextDocument, pendingWindow: 
   const snippet = buildSnippet(document, pendingWindow);
   const documentUri = document.uri.toString();
   const reviewedContext = buildReviewedContext(state, pendingWindow);
+  const workspaceRoot = getWorkspaceRootForDocument(document);
 
   if (!snippet.text.trim()) {
     return;
@@ -569,7 +584,9 @@ async function runComplianceCheck(document: vscode.TextDocument, pendingWindow: 
         lineOffset: snippet.absoluteStartLine - 1,
         reviewedContext,
         provider,
-        model
+        model,
+        workspaceRoot,
+        restrictDirectoryAnalysisToWorkspace: true
       },
       event => {
         if (!activeRun || activeRun.documentUri !== documentUri) {
@@ -718,7 +735,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBar = new StatusBarController();
   outputChannel = vscode.window.createOutputChannel('AI Ethics');
   secretManager = new SecretManager(context.secrets, outputChannel);
-  mcpClient = new EthicsMcpClient(outputChannel, async () => secretManager.buildProcessEnv());
+  mcpClient = new EthicsMcpClient(outputChannel, buildServerEnv);
 
   context.subscriptions.push(
     diagnosticCollection,
@@ -762,7 +779,12 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      if (event.affectsConfiguration('aiEthics.pythonPath') || event.affectsConfiguration('aiEthics.serverPath')) {
+      if (
+        event.affectsConfiguration('aiEthics.pythonPath') ||
+        event.affectsConfiguration('aiEthics.serverPath') ||
+        event.affectsConfiguration('aiEthics.provider') ||
+        event.affectsConfiguration('aiEthics.model')
+      ) {
         void requestMcpReset('connection settings changed');
       }
 

@@ -13,7 +13,7 @@ def test_review_file_node_returns_actionable_error_for_missing_provider_key(monk
         "file_content": "model.fit(X, y)\n# hiring classifier\n",
         "config": {"agentic": {"enabled": True}, "rag": {"top_k": 3}},
         "llm_provider": "openrouter",
-        "llm_model": "qwen/qwen3.6-plus:free",
+        "llm_model": "nvidia/nemotron-3-super-120b-a12b:free",
         "file_result": None,
         "progress_events": [],
         "final_report_md": None,

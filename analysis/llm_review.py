@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Callable
 
 from analysis.agentic_runtime import run_pydantic_agentic_review
@@ -14,6 +15,96 @@ WebSearchFn = Callable[[str, int], list[dict[str, Any]]]
 
 VALID_STATUSES = {"PASS", "WARN", "FAIL", "ERROR", "SKIPPED"}
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH"}
+_DEFAULT_FILE_CONTENT_CHARS = 14_000
+_DEFAULT_RAG_TEXT_CHARS = 1_200
+_DEFAULT_WEB_TEXT_CHARS = 1_000
+_COMPACT_FILE_CONTENT_CHARS = 7_000
+_COMPACT_RAG_TEXT_CHARS = 700
+_COMPACT_WEB_TEXT_CHARS = 600
+
+
+def _truncate_block(text: str, limit: int) -> str:
+    candidate = str(text or "")
+    if len(candidate) <= limit:
+        return candidate
+    return candidate[: max(0, limit - 30)].rstrip() + "\n[Truncated for token budget]"
+
+
+def _error_text(error: Exception) -> str:
+    return str(getattr(error, "args", [error])[0] if getattr(error, "args", None) else error)
+
+
+def _error_payload(error: Exception) -> dict[str, Any] | None:
+    raw = _error_text(error).strip()
+    if not raw:
+        return None
+    if raw.startswith("{") and raw.endswith("}"):
+        try:
+            parsed = json.loads(raw.replace("'", '"'))
+        except Exception:
+            parsed = None
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _is_transient_provider_error(error: Exception) -> bool:
+    payload = _error_payload(error) or {}
+    code = payload.get("code")
+    try:
+        numeric_code = int(code)
+    except Exception:
+        numeric_code = None
+    if numeric_code is not None and (numeric_code == 429 or 500 <= numeric_code < 600):
+        return True
+
+    text = _error_text(error).lower()
+    transient_terms = (
+        "internal server error",
+        "server error",
+        "bad gateway",
+        "gateway timeout",
+        "service unavailable",
+        "temporarily unavailable",
+        "rate limit",
+        "timeout",
+    )
+    return any(term in text for term in transient_terms)
+
+
+def _is_connectivity_error(error: Exception) -> bool:
+    text = _error_text(error).lower()
+    connectivity_terms = (
+        "failed to connect",
+        "connecterror",
+        "connection refused",
+        "nodename nor servname provided",
+        "name or service not known",
+        "temporary failure in name resolution",
+        "no route to host",
+    )
+    return any(term in text for term in connectivity_terms)
+
+
+def _format_invocation_error(provider: str, model: str, error: Exception) -> str:
+    if _is_connectivity_error(error):
+        if provider == "ollama_cloud":
+            return (
+                f"model invocation failed for provider={provider} model={model}: "
+                "could not reach Ollama Cloud at https://ollama.com. "
+                "Verify network access and your Ollama API key."
+            )
+        if provider == "ollama_local":
+            return (
+                f"model invocation failed for provider={provider} model={model}: "
+                "could not reach Ollama Local at http://localhost:11434. "
+                "Start the Ollama app or daemon and ensure the selected model is available locally."
+            )
+    return f"model invocation failed: {error}"
+
+
+def _retry_sleep(attempt_index: int) -> None:
+    time.sleep(min(1.0, 0.25 * (2**attempt_index)))
 
 
 def _response_text(response: Any) -> str:
@@ -172,6 +263,29 @@ def _compact_reviewed_context(reviewed_context: list[dict[str, Any]] | None) -> 
     return json.dumps(compact, ensure_ascii=True)
 
 
+def _compact_repository_context(repository_context: str, limit: int = 4000) -> str:
+    compact = str(repository_context or "").strip()
+    if not compact:
+        return ""
+    if len(compact) <= limit:
+        return compact
+
+    lines: list[str] = []
+    consumed = 0
+    for raw_line in compact.splitlines():
+        line = raw_line.rstrip()
+        if not line:
+            continue
+        projected = consumed + len(line) + 1
+        if projected > limit - 48:
+            break
+        lines.append(line)
+        consumed = projected
+    if not lines:
+        return compact[: limit - 3].rstrip() + "..."
+    return "\n".join(lines) + "\n\n[Repository context truncated for token budget]"
+
+
 def _supporting_context(
     *,
     base_result: FileResult,
@@ -184,8 +298,9 @@ def _supporting_context(
         sections.append(f"Prepared predicted output:\n{predicted_output}")
     if reviewed_context:
         sections.append(f"Nearby reviewed context:\n{_compact_reviewed_context(reviewed_context)}")
-    if repository_context.strip():
-        sections.append(f"Repository-wide DIRECTORY_ANALYSIS context:\n{repository_context.strip()}")
+    compact_repository_context = _compact_repository_context(repository_context)
+    if compact_repository_context:
+        sections.append(f"Repository-wide DIRECTORY_ANALYSIS context:\n{compact_repository_context}")
     return "\n\n".join(sections)
 
 
@@ -209,20 +324,25 @@ def _build_prompt(
     web_hits: list[dict[str, Any]],
     reviewed_context: list[dict[str, Any]] | None,
     repository_context: str,
+    compact_mode: bool = False,
 ) -> str:
     system_prompt = load_prompt("file_reviewer").strip()
+    rag_limit = _COMPACT_RAG_TEXT_CHARS if compact_mode else _DEFAULT_RAG_TEXT_CHARS
+    web_limit = _COMPACT_WEB_TEXT_CHARS if compact_mode else _DEFAULT_WEB_TEXT_CHARS
+    file_limit = _COMPACT_FILE_CONTENT_CHARS if compact_mode else _DEFAULT_FILE_CONTENT_CHARS
     rag_context = "\n\n".join(
         f"[{index}] chunk_id={hit.get('metadata', {}).get('chunk_id', 'n/a')} "
         f"page={hit.get('metadata', {}).get('page', 'n/a')} "
         f"confidence={_float_value(hit.get('confidence'), 0.0):.3f} "
-        f"trust={_float_value(hit.get('trust_score'), 0.0):.3f}\n{hit.get('text', '')}"
-        for index, hit in enumerate(rag_hits, start=1)
+        f"trust={_float_value(hit.get('trust_score'), 0.0):.3f}\n{_truncate_block(str(hit.get('text', '')), rag_limit)}"
+        for index, hit in enumerate(rag_hits[: (2 if compact_mode else 3)], start=1)
     )
     web_context = "\n\n".join(
         f"[{index}] source={hit.get('source', 'web')} title={hit.get('title', 'n/a')} url={hit.get('url', '')}\n"
-        f"{hit.get('content') or hit.get('snippet') or hit.get('body') or ''}"
-        for index, hit in enumerate(web_hits, start=1)
+        f"{_truncate_block(str(hit.get('content') or hit.get('snippet') or hit.get('body') or ''), web_limit)}"
+        for index, hit in enumerate(web_hits[: (1 if compact_mode else 2)], start=1)
     )
+    effective_repository_context = "" if compact_mode else repository_context
 
     return f"""
 SYSTEM INSTRUCTIONS
@@ -236,7 +356,7 @@ Prepared file summary: {base_result['summary']}
 Prepared predicted output: {base_result.get('predicted_output')}
 
 Supporting repository and nearby context:
-{_supporting_context(base_result=base_result, reviewed_context=reviewed_context, repository_context=repository_context)}
+{_supporting_context(base_result=base_result, reviewed_context=reviewed_context, repository_context=effective_repository_context)}
 
 Knowledge base excerpts:
 {rag_context or 'No RAG excerpts available.'}
@@ -246,9 +366,31 @@ Web search excerpts:
 
 File content:
 ```text
-{file_content}
+{_truncate_block(file_content, file_limit)}
 ```
 """.strip()
+
+
+def _invoke_with_transient_retries(
+    *,
+    llm: Any,
+    prompt_factory: Callable[[bool], str],
+    max_attempts: int,
+) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(max(1, max_attempts)):
+        compact_mode = attempt > 0
+        prompt = prompt_factory(compact_mode)
+        try:
+            return llm.invoke(prompt)
+        except Exception as exc:
+            last_error = exc
+            if not _is_transient_provider_error(exc) or attempt + 1 >= max_attempts:
+                raise
+            _retry_sleep(attempt)
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("model invocation failed without returning a response")
 
 
 def _llm_error_result(
@@ -350,11 +492,13 @@ def assess_file_with_llm(
     effective_config = config or {}
     agentic_config = effective_config.get("agentic", {})
     thresholds = agentic_config.get("grade_thresholds", {}) or {}
+    llm_config = effective_config.get("llm", {}) or {}
     question = _build_review_question(file_path, base_result)
     top_k_effective = int(agentic_config.get("retrieval_top_k", top_k))
     max_retries = int(agentic_config.get("max_retries", 2))
     max_web_results = int(agentic_config.get("web_search_max_results", 3))
     force_web_threshold = _float_value(thresholds.get("force_web_search_relevancy_max"), 0.35)
+    provider_retry_attempts = max(1, int(llm_config.get("max_retries", 3) or 3))
 
     rag_hits: list[dict[str, Any]] = query_rag(question, top_k_effective) if query_rag else []
     web_hits: list[dict[str, Any]] = []
@@ -392,23 +536,27 @@ def assess_file_with_llm(
                     question=question,
                 )
 
-    prompt = _build_prompt(
-        question=question,
-        file_path=file_path,
-        file_content=file_content,
-        base_result=base_result,
-        rag_hits=rag_hits,
-        web_hits=web_hits,
-        reviewed_context=reviewed_context,
-        repository_context=repository_context,
-    )
     try:
-        response = llm.invoke(prompt)
+        response = _invoke_with_transient_retries(
+            llm=llm,
+            prompt_factory=lambda compact_mode: _build_prompt(
+                question=question,
+                file_path=file_path,
+                file_content=file_content,
+                base_result=base_result,
+                rag_hits=rag_hits,
+                web_hits=web_hits,
+                reviewed_context=reviewed_context,
+                repository_context=repository_context,
+                compact_mode=compact_mode,
+            ),
+            max_attempts=provider_retry_attempts,
+        )
     except Exception as exc:
         return _llm_error_result(
             file_path=file_path,
             base_result=base_result,
-            reason=f"model invocation failed: {exc}",
+            reason=_format_invocation_error(provider, model, exc),
         )
 
     payload = extract_tagged_json(_response_text(response))
@@ -425,18 +573,22 @@ def assess_file_with_llm(
         except Exception:
             web_hits = []
         if web_hits:
-            retry_prompt = _build_prompt(
-                question=question,
-                file_path=file_path,
-                file_content=file_content,
-                base_result=base_result,
-                rag_hits=rag_hits,
-                web_hits=web_hits,
-                reviewed_context=reviewed_context,
-                repository_context=repository_context,
-            )
             try:
-                retry_response = llm.invoke(retry_prompt)
+                retry_response = _invoke_with_transient_retries(
+                    llm=llm,
+                    prompt_factory=lambda compact_mode: _build_prompt(
+                        question=question,
+                        file_path=file_path,
+                        file_content=file_content,
+                        base_result=base_result,
+                        rag_hits=rag_hits,
+                        web_hits=web_hits,
+                        reviewed_context=reviewed_context,
+                        repository_context=repository_context,
+                        compact_mode=compact_mode,
+                    ),
+                    max_attempts=provider_retry_attempts,
+                )
                 retry_payload = extract_tagged_json(_response_text(retry_response))
                 if retry_payload is not None:
                     payload = retry_payload
@@ -444,7 +596,7 @@ def assess_file_with_llm(
                 return _llm_error_result(
                     file_path=file_path,
                     base_result=base_result,
-                    reason=f"model retry after web augmentation failed: {exc}",
+                    reason=_format_invocation_error(provider, model, exc),
                 )
 
     return _map_payload_to_result(

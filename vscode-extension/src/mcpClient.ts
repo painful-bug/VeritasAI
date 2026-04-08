@@ -229,6 +229,8 @@ export class EthicsMcpClient implements vscode.Disposable {
       reviewedContext?: ReviewedContextItem[];
       provider: string;
       model: string;
+      workspaceRoot?: string;
+      restrictDirectoryAnalysisToWorkspace?: boolean;
     },
     onEvent: (payload: ProgressPayload) => void
   ): Promise<CheckFileResult> {
@@ -243,7 +245,9 @@ export class EthicsMcpClient implements vscode.Disposable {
           line_offset: request.lineOffset ?? 0,
           reviewed_context: request.reviewedContext ?? [],
           provider: request.provider,
-          model: request.model
+          model: request.model,
+          workspace_root: request.workspaceRoot,
+          restrict_directory_analysis_to_workspace: request.restrictDirectoryAnalysisToWorkspace ?? false
         }
       },
       undefined,

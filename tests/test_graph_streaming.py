@@ -11,6 +11,7 @@ import nodes.review_file as review_file_module
 def _stub_llm_review(monkeypatch) -> None:
     monkeypatch.setattr(review_file_module, "missing_provider_credential", lambda provider: None)
     monkeypatch.setattr(review_file_module, "try_create_llm", lambda provider, model, config=None: object())
+    monkeypatch.setattr(review_file_module, "_rag_query", lambda config: (lambda description, top_k: []))
 
     def fake_assess_file_with_llm(**kwargs):
         file_path = kwargs["file_path"]
@@ -79,7 +80,7 @@ model.fit(X, y)
         "file_path": str(file_path),
         "file_content": file_path.read_text(encoding="utf-8"),
         "llm_provider": "openrouter",
-        "llm_model": "qwen/qwen3.6-plus:free",
+        "llm_model": "nvidia/nemotron-3-super-120b-a12b:free",
         "config": {
             "scan": {"output_dir": "compliance-analysis"},
             "rag": {"top_k": 1},
@@ -136,7 +137,7 @@ model.fit(X, y)
         "file_path": str(file_path),
         "file_content": 'features = ["gender", "age"]\nmodel.fit(X, y)',
         "llm_provider": "openrouter",
-        "llm_model": "qwen/qwen3.6-plus:free",
+        "llm_model": "nvidia/nemotron-3-super-120b-a12b:free",
         "line_offset": 9,
         "config": {
             "scan": {"output_dir": "compliance-analysis"},

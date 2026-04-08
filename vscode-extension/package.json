@@ -63,7 +63,7 @@
         },
         "aiEthics.provider": {
           "type": "string",
-          "default": "ollama_cloud",
+          "default": "openrouter",
           "description": "LLM provider to use for scans. Remote providers require the user to supply their own API key.",
           "enum": [
             "ollama_cloud",
@@ -74,7 +74,7 @@
         },
         "aiEthics.model": {
           "type": "string",
-          "default": "glm4:cloud",
+          "default": "nvidia/nemotron-3-super-120b-a12b:free",
           "description": "Model to request from the selected provider."
         },
         "aiEthics.pythonPath": {

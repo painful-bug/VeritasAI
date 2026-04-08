@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 export type SecretKeyName =
   | 'GROQ_API_KEY'
   | 'LANGSMITH_API_KEY'
+  | 'OLLAMA_API_KEY'
   | 'OLLAMA_CLOUD_API_KEY'
   | 'OPENROUTER_API_KEY'
   | 'TAVILY_API_KEY';
@@ -17,7 +18,7 @@ type SecretDefinition = {
 const SECRET_DEFINITIONS: SecretDefinition[] = [
   { id: 'OPENROUTER_API_KEY', label: 'OpenRouter API key', provider: 'openrouter', requiredForScanning: true },
   { id: 'GROQ_API_KEY', label: 'Groq API key', provider: 'groq', requiredForScanning: true },
-  { id: 'OLLAMA_CLOUD_API_KEY', label: 'Ollama Cloud API key', provider: 'ollama_cloud', requiredForScanning: true },
+  { id: 'OLLAMA_CLOUD_API_KEY', label: 'Ollama API key', provider: 'ollama_cloud', requiredForScanning: true },
   { id: 'TAVILY_API_KEY', label: 'Tavily API key', requiredForScanning: false },
   { id: 'LANGSMITH_API_KEY', label: 'LangSmith API key', requiredForScanning: false }
 ];
@@ -33,6 +34,13 @@ const SECRET_BY_PROVIDER = new Map<string, SecretDefinition>(
 function normalizeSecret(value: string | undefined | null): string | undefined {
   const trimmed = String(value ?? '').trim();
   return trimmed || undefined;
+}
+
+function aliasedSecretNames(secretName: SecretKeyName): SecretKeyName[] {
+  if (secretName === 'OLLAMA_CLOUD_API_KEY' || secretName === 'OLLAMA_API_KEY') {
+    return ['OLLAMA_CLOUD_API_KEY', 'OLLAMA_API_KEY'];
+  }
+  return [secretName];
 }
 
 export function providerDisplayName(provider: string): string {
@@ -62,6 +70,9 @@ export class SecretManager {
       const value = await this.getStoredSecret(definition.id);
       if (value) {
         overrides[definition.id] = value;
+        if (definition.id === 'OLLAMA_CLOUD_API_KEY') {
+          overrides.OLLAMA_API_KEY = value;
+        }
       }
     }
     return overrides;
@@ -227,7 +238,13 @@ export class SecretManager {
   }
 
   private async getStoredSecret(secretName: SecretKeyName): Promise<string | undefined> {
-    return normalizeSecret(await this.secrets.get(secretName));
+    for (const name of aliasedSecretNames(secretName)) {
+      const stored = normalizeSecret(await this.secrets.get(name));
+      if (stored) {
+        return stored;
+      }
+    }
+    return undefined;
   }
 
   private async resolveSecretValue(secretName: SecretKeyName): Promise<string | undefined> {
@@ -235,6 +252,12 @@ export class SecretManager {
     if (stored) {
       return stored;
     }
-    return normalizeSecret(process.env[secretName]);
+    for (const name of aliasedSecretNames(secretName)) {
+      const value = normalizeSecret(process.env[name]);
+      if (value) {
+        return value;
+      }
+    }
+    return undefined;
   }
 }

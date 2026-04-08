@@ -1,13 +1,13 @@
 llm:
   default_provider: openrouter
-  default_model: qwen/qwen3.6-plus:free
+  default_model: nvidia/nemotron-3-super-120b-a12b:free
   max_retries: 3
   retry_backoff_jitter: true
   rate_limit_rps: 2
   rate_limit_burst: 10
   providers:
     ollama_cloud:
-      base_url: https://cloud.ollama.com
+      base_url: https://ollama.com
       models:
         - glm4:cloud
         - llama3.3:cloud
@@ -15,7 +15,7 @@ llm:
     openrouter:
       base_url: https://openrouter.ai/api/v1
       models:
-        - qwen/qwen3.6-plus:free
+        - nvidia/nemotron-3-super-120b-a12b:free
     groq:
       models:
         - llama-3.3-70b-versatile

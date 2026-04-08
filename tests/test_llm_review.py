@@ -4,7 +4,7 @@ from analysis.llm_review import assess_file_with_llm
 
 
 class FakeLLM:
-    def __init__(self, responses: list[str]):
+    def __init__(self, responses: list[object]):
         self._responses = list(responses)
         self.prompts: list[str] = []
 
@@ -13,7 +13,10 @@ class FakeLLM:
         self.prompts.append(prompt)
         if not self._responses:
             raise RuntimeError("No fake responses left")
-        return self._responses.pop(0)
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return str(response)
 
 
 def _base_result(file_path: str) -> dict:
@@ -84,10 +87,10 @@ def test_assess_file_with_llm_runs_web_augmentation_when_needed() -> None:
         query_rag=query_rag,
         top_k=3,
         provider="openrouter",
-        model="qwen/qwen3.6-plus:free",
+        model="nvidia/nemotron-3-super-120b-a12b:free",
         config={
             "agentic": {
-                "runtime_mode": "hybrid",
+                "runtime_mode": "llm",
                 "web_search_max_results": 2,
                 "grade_thresholds": {
                     "relevancy_min": 0.55,
@@ -121,8 +124,8 @@ def test_assess_file_with_llm_returns_error_when_model_response_is_invalid() -> 
         query_rag=lambda description, top_k: [],
         top_k=3,
         provider="openrouter",
-        model="qwen/qwen3.6-plus:free",
-        config={"agentic": {"runtime_mode": "hybrid", "grade_thresholds": {}}},
+        model="nvidia/nemotron-3-super-120b-a12b:free",
+        config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}},
         web_search_fn=None,
     )
 
@@ -166,7 +169,7 @@ def test_assess_file_with_llm_includes_repository_analysis_context() -> None:
         query_rag=lambda description, top_k: [],
         top_k=3,
         provider="openrouter",
-        model="qwen/qwen3.6-plus:free",
+        model="nvidia/nemotron-3-super-120b-a12b:free",
         config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}},
         web_search_fn=None,
         reviewed_context=reviewed_context,
@@ -178,3 +181,57 @@ def test_assess_file_with_llm_includes_repository_analysis_context() -> None:
     assert "Repository-wide DIRECTORY_ANALYSIS context" in llm.prompts[0]
     assert "VS Code integration" in llm.prompts[0]
     assert "Nearby reviewed context" in llm.prompts[0]
+
+
+def test_assess_file_with_llm_retries_transient_provider_error_with_compact_prompt() -> None:
+    file_path = "/tmp/example.py"
+    llm = FakeLLM(
+        [
+            ValueError({"message": "Internal Server Error", "code": 500}),
+            '<r>{"Relevancy":0.84,"Faithfulness":0.9,"Context Quality":0.81,"Needs Web Search":false,'
+            '"Explanation":"Recovered after retry","Answer":"ok","status":"PASS","summary":"stable","findings":[]}</r>',
+        ]
+    )
+    repository_context = "# Directory Analysis\n\n" + ("- item: verbose context\n" * 500)
+
+    result = assess_file_with_llm(
+        llm=llm,
+        file_path=file_path,
+        file_content="print('ok')\n" * 4000,
+        base_result=_base_result(file_path),
+        query_rag=lambda description, top_k: [],
+        top_k=3,
+        provider="openrouter",
+        model="nvidia/nemotron-3-super-120b-a12b:free",
+        config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}, "llm": {"max_retries": 2}},
+        web_search_fn=None,
+        repository_context=repository_context,
+    )
+
+    assert result["status"] == "PASS"
+    assert len(llm.prompts) == 2
+    assert "Repository-wide DIRECTORY_ANALYSIS context" in llm.prompts[0]
+    assert "Repository-wide DIRECTORY_ANALYSIS context" not in llm.prompts[1]
+    assert len(llm.prompts[1]) < len(llm.prompts[0])
+
+
+def test_assess_file_with_llm_returns_actionable_ollama_local_connectivity_error() -> None:
+    file_path = "/tmp/example.py"
+    llm = FakeLLM([ConnectionError("Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible.")])
+
+    result = assess_file_with_llm(
+        llm=llm,
+        file_path=file_path,
+        file_content="print('ok')",
+        base_result=_base_result(file_path),
+        query_rag=lambda description, top_k: [],
+        top_k=3,
+        provider="ollama_local",
+        model="qwen3:8b",
+        config={"agentic": {"runtime_mode": "llm", "grade_thresholds": {}}},
+        web_search_fn=None,
+    )
+
+    assert result["status"] == "ERROR"
+    assert "http://localhost:11434" in (result["error"] or "")
+    assert "Start the Ollama app or daemon" in (result["error"] or "")

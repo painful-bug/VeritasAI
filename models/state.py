@@ -73,6 +73,8 @@ class ComplianceState(TypedDict):
     config: dict[str, Any]
     llm_provider: str
     llm_model: str
+    opened_workspace_root: NotRequired[str | None]
+    restrict_directory_analysis_to_workspace: NotRequired[bool]
     line_offset: NotRequired[int]
     reviewed_context: NotRequired[list[dict[str, Any]]]
     agentic_context: NotRequired[str]

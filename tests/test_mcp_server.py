@@ -12,6 +12,7 @@ from mcp_server import _ensure_runtime, stream_compliance_check
 def test_stream_compliance_check_yields_custom_and_completion_events(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(review_file_module, "missing_provider_credential", lambda provider: None)
     monkeypatch.setattr(review_file_module, "try_create_llm", lambda provider, model, config=None: object())
+    monkeypatch.setattr(review_file_module, "_rag_query", lambda config: (lambda description, top_k: []))
 
     def fake_assess_file_with_llm(**kwargs):
         file_path = kwargs["file_path"]
@@ -71,7 +72,7 @@ model.fit(X, y)
                 file_path=str(file_path),
                 file_content=file_path.read_text(encoding="utf-8"),
                 provider="openrouter",
-                model="qwen/qwen3.6-plus:free",
+                model="nvidia/nemotron-3-super-120b-a12b:free",
                 thread_id="thread-1",
             )
         ]

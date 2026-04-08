@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import subprocess
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from config_loader import load_config
 
@@ -22,20 +23,58 @@ def _make_rate_limiter(config: dict[str, Any]):
 
 def provider_requires_api_key(provider: str) -> str | None:
     return {
-        "ollama_cloud": "OLLAMA_CLOUD_API_KEY",
+        "ollama_cloud": "OLLAMA_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
         "groq": "GROQ_API_KEY",
         "ollama_local": None,
     }.get(provider)
 
 
+def _provider_credential_candidates(provider: str) -> tuple[str, ...]:
+    if provider == "ollama_cloud":
+        return ("OLLAMA_API_KEY", "OLLAMA_CLOUD_API_KEY")
+    required = provider_requires_api_key(provider)
+    return (required,) if required else ()
+
+
+def _provider_credential(provider: str) -> str | None:
+    for env_name in _provider_credential_candidates(provider):
+        value = os.getenv(env_name, "").strip()
+        if value:
+            return value
+    return None
+
+
 def missing_provider_credential(provider: str) -> str | None:
     env_name = provider_requires_api_key(provider)
     if not env_name:
         return None
-    if os.getenv(env_name, "").strip():
+    if _provider_credential(provider):
         return None
     return env_name
+
+
+def _normalize_ollama_base_url(provider: str, base_url: str) -> str:
+    raw = str(base_url or "").strip()
+    if not raw:
+        return "https://ollama.com" if provider == "ollama_cloud" else "http://localhost:11434"
+
+    parsed = urlsplit(raw)
+    if not parsed.scheme and not parsed.netloc:
+        parsed = urlsplit(f"https://{raw}" if provider == "ollama_cloud" else f"http://{raw}")
+
+    scheme = parsed.scheme or ("https" if provider == "ollama_cloud" else "http")
+    netloc = parsed.netloc or parsed.path
+    path = parsed.path if parsed.netloc else ""
+
+    if provider == "ollama_cloud" and netloc == "cloud.ollama.com":
+        netloc = "ollama.com"
+
+    trimmed_path = path.rstrip("/")
+    if trimmed_path in {"/api", "/v1"}:
+        path = ""
+
+    return urlunsplit((scheme, netloc, path, "", "")).rstrip("/")
 
 
 def list_local_ollama_models() -> list[str]:
@@ -68,29 +107,27 @@ def resolve_provider_model(provider: str, model: str, config: dict[str, Any] | N
     effective = config or load_config()
     llm_config = effective.get("llm", {}) or {}
     configured_providers = llm_config.get("providers", {}) or {}
-    default_provider = str(llm_config.get("default_provider", "ollama_cloud") or "ollama_cloud").strip()
-    requested_provider = str(provider or "").strip() or default_provider
+    default_provider = str(llm_config.get("default_provider", "openrouter") or "openrouter").strip()
+    explicit_provider = str(provider or "").strip()
+    requested_provider = explicit_provider or default_provider
     known_providers = set(configured_providers) | set(_KNOWN_PROVIDERS)
-
-    if requested_provider not in known_providers:
-        requested_provider = default_provider
-
-    available_models = get_available_models(effective, requested_provider)
     requested_model = str(model or "").strip()
     configured_default_model = str(llm_config.get("default_model", "") or "").strip()
 
-    if requested_model and (not available_models or requested_model in available_models):
+    if requested_provider not in known_providers and not explicit_provider:
+        requested_provider = default_provider
+
+    # Preserve any explicit provider/model from the VS Code extension. Static
+    # config model lists are hints for the UI, not an authority for runtime routing.
+    if requested_model:
         return requested_provider, requested_model
 
     if requested_provider == default_provider and configured_default_model:
-        if not available_models or configured_default_model in available_models:
-            return requested_provider, configured_default_model
+        return requested_provider, configured_default_model
 
+    available_models = get_available_models(effective, requested_provider)
     if available_models:
         return requested_provider, available_models[0]
-
-    if requested_model:
-        return requested_provider, requested_model
 
     return requested_provider, configured_default_model
 
@@ -104,7 +141,9 @@ def create_llm(provider: str, model: str, config: dict[str, Any] | None = None, 
             f"Missing required credential {missing_credential} for provider {provider}."
         )
     provider_config = effective.get("llm", {}).get("providers", {}).get(provider, {})
-    base_url = str(provider_config.get("base_url", ""))
+    base_url = str(provider_config.get("base_url", "")).strip()
+    if provider in {"ollama_cloud", "ollama_local"}:
+        base_url = _normalize_ollama_base_url(provider, base_url)
     cache_key = (provider, model, base_url)
     if cache_key in _LLM_CACHE:
         return _LLM_CACHE[cache_key]
@@ -116,12 +155,19 @@ def create_llm(provider: str, model: str, config: dict[str, Any] | None = None, 
     if provider == "ollama_cloud":
         from langchain_ollama import ChatOllama
 
+        client_kwargs = dict(kwargs.pop("client_kwargs", {}) or {})
+        headers = dict(client_kwargs.get("headers", {}) or {})
+        ollama_api_key = _provider_credential(provider)
+        if ollama_api_key and not any(key.lower() == "authorization" for key in headers):
+            headers["Authorization"] = f"Bearer {ollama_api_key}"
+        if headers:
+            client_kwargs["headers"] = headers
         llm = ChatOllama(
             model=model,
-            base_url=base_url or "https://cloud.ollama.com",
-            api_key=os.getenv("OLLAMA_CLOUD_API_KEY"),
+            base_url=base_url or "https://ollama.com",
             temperature=temperature,
             rate_limiter=rate_limiter,
+            client_kwargs=client_kwargs,
             **kwargs,
         )
     elif provider == "openrouter":

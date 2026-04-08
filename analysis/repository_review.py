@@ -132,6 +132,10 @@ _DIRECTORY_PURPOSE_HINTS = {
     "ui": "User-facing interface code.",
     "vscode-extension": "VS Code extension implementation and editor integration.",
 }
+_MAX_DIRECTORY_LINES = 24
+_MAX_RELATIONSHIP_LINES = 12
+_MAX_KEY_FILES = 18
+_MAX_KEY_FILES_PER_DIRECTORY = 4
 
 
 def resolve_workspace_root(target_path: str | Path) -> Path:
@@ -145,6 +149,16 @@ def resolve_workspace_root(target_path: str | Path) -> Path:
     return candidate
 
 
+def path_is_within_root(target_path: str | Path, root: str | Path) -> bool:
+    try:
+        candidate = Path(target_path).expanduser().resolve()
+        workspace_root = Path(root).expanduser().resolve()
+        candidate.relative_to(workspace_root)
+        return True
+    except Exception:
+        return False
+
+
 def _settings(config: dict[str, Any] | None) -> dict[str, Any]:
     effective = config or {}
     directory_analysis = effective.get("directory_analysis", {}) or {}
@@ -156,7 +170,7 @@ def _settings(config: dict[str, Any] | None) -> dict[str, Any]:
     return {
         "enabled": bool(directory_analysis.get("enabled", True)),
         "filename": str(directory_analysis.get("filename", "DIRECTORY_ANALYSIS.md") or "DIRECTORY_ANALYSIS.md"),
-        "preview_chars": max(2000, int(directory_analysis.get("preview_chars", 12000) or 12000)),
+        "preview_chars": max(1200, int(directory_analysis.get("preview_chars", 3000) or 3000)),
         "exclude_dirs": sorted(_DEFAULT_EXCLUDED_DIRS | excluded_dirs),
         "exclude_globs": sorted(_DEFAULT_EXCLUDED_GLOBS | excluded_globs),
     }
@@ -461,8 +475,8 @@ def _entry_summary(path: Path, root: Path, preview_chars: int) -> dict[str, Any]
         "file_type": file_type,
         "language": language,
         "size": int(path.stat().st_size),
-        "summary": analysis_result["summary"],
-        "predicted_output": analysis_result["predicted_output"],
+        "summary": shorten(analysis_result["summary"], 140),
+        "predicted_output": shorten(analysis_result["predicted_output"] or "", 140),
         "fields": fields[:12],
         "data_sources": data_sources[:8],
         "internal_references": local_references,
@@ -472,6 +486,48 @@ def _entry_summary(path: Path, root: Path, preview_chars: int) -> dict[str, Any]
         "truncated": truncated,
         "is_entrypoint": _entrypoint_hints(path, preview),
     }
+
+
+def _entry_priority(entry: dict[str, Any]) -> tuple[int, int, str]:
+    score = 0
+    if entry["is_entrypoint"]:
+        score += 6
+    score += min(len(entry["internal_references"]), 3) * 2
+    if entry["data_sources"]:
+        score += 4
+    if entry["sensitive_fields"]:
+        score += 3
+    if entry["fields"]:
+        score += 2
+    if entry["file_type"] == "source_code":
+        score += 1
+    return (-score, len(entry["relative_path"]), entry["relative_path"])
+
+
+def _key_files(entries: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if len(entries) <= limit:
+        return sorted(entries, key=lambda entry: entry["relative_path"])
+    selected = sorted(entries, key=_entry_priority)[:limit]
+    return sorted(selected, key=lambda entry: entry["relative_path"])
+
+
+def _compact_list(values: list[str], limit: int = 4) -> str:
+    return ", ".join(f"`{value}`" for value in values[:limit])
+
+
+def _format_file_highlight(entry: dict[str, Any]) -> str:
+    details = [entry["summary"]]
+    if entry["is_entrypoint"]:
+        details.append("entrypoint")
+    if entry["internal_references"]:
+        details.append(f"refs: {_compact_list(entry['internal_references'], limit=3)}")
+    elif entry["data_sources"]:
+        sources = [str(item.get("url_or_path") or "") for item in entry["data_sources"] if item.get("url_or_path")]
+        if sources:
+            details.append(f"data: {_compact_list(sources, limit=2)}")
+    elif entry["fields"]:
+        details.append(f"fields: {_compact_list(entry['fields'], limit=4)}")
+    return f"- `{entry['relative_path']}`: {' | '.join(part for part in details if part)}"
 
 
 def _render_markdown(
@@ -490,15 +546,15 @@ def _render_markdown(
     theme_terms = _theme_terms(entries, readme_excerpt)
     languages = Counter(entry["language"] or "Unknown" for entry in entries if entry["file_type"] == "source_code")
     file_types = Counter(entry["file_type"] for entry in entries)
-    entrypoints = [entry["relative_path"] for entry in entries if entry["is_entrypoint"]][:12]
+    entrypoints = [entry["relative_path"] for entry in entries if entry["is_entrypoint"]][:8]
     relationship_lines: list[str] = []
-    for entry in entries:
+    for entry in _key_files(entries, limit=max(_MAX_RELATIONSHIP_LINES * 2, _MAX_KEY_FILES)):
         if not entry["internal_references"]:
             continue
         relationship_lines.append(
-            f"- `{entry['relative_path']}` references {', '.join(f'`{item}`' for item in entry['internal_references'][:4])}"
+            f"- `{entry['relative_path']}` -> {', '.join(f'`{item}`' for item in entry['internal_references'][:3])}"
         )
-        if len(relationship_lines) >= 20:
+        if len(relationship_lines) >= _MAX_RELATIONSHIP_LINES:
             break
 
     overview = readme_excerpt or (
@@ -506,6 +562,8 @@ def _render_markdown(
         f"{', '.join(language for language, _ in languages.most_common(3)) or 'mixed-language'} project "
         f"focused on {', '.join(theme_terms[:4]) or 'application logic and data processing'}."
     )
+
+    key_entries = _key_files(entries, limit=_MAX_KEY_FILES)
 
     lines = [
         "# Directory Analysis",
@@ -518,17 +576,17 @@ def _render_markdown(
         "",
         "## Repository Overview",
         "",
-        f"- Purpose: {overview}",
-        f"- Main themes: {', '.join(theme_terms) if theme_terms else 'No dominant themes inferred.'}",
-        f"- Dominant languages: {', '.join(f'{name} ({count})' for name, count in languages.most_common()) or 'No source code detected.'}",
-        f"- File type mix: {', '.join(f'{name} ({count})' for name, count in file_types.most_common())}",
+        f"- Purpose: {shorten(overview, 220)}",
+        f"- Main themes: {', '.join(theme_terms[:6]) if theme_terms else 'No dominant themes inferred.'}",
+        f"- Dominant languages: {', '.join(f'{name} ({count})' for name, count in languages.most_common(5)) or 'No source code detected.'}",
+        f"- File type mix: {', '.join(f'{name} ({count})' for name, count in file_types.most_common(6))}",
         f"- Likely entrypoints: {', '.join(f'`{path}`' for path in entrypoints) if entrypoints else 'None inferred.'}",
         "",
-        "## Directory Breakdown",
+        "## Directory Map",
         "",
     ]
 
-    for relative_dir in directories:
+    for relative_dir in directories[:_MAX_DIRECTORY_LINES]:
         child_entries = directory_map.get(relative_dir, [])
         if relative_dir == ".":
             immediate_children = sorted(
@@ -550,63 +608,30 @@ def _render_markdown(
                 }
             )
         dominant_languages = Counter(entry["language"] or "Unknown" for entry in child_entries if entry["language"])
-        lines.extend(
-            [
-                f"### `{relative_dir}`",
-                "",
-                f"- Purpose: {_describe_directory(relative_dir, child_entries)}",
-                f"- Files: `{len(child_entries)}`",
-                f"- Languages: {', '.join(f'{name} ({count})' for name, count in dominant_languages.most_common(4)) or 'None'}",
-                f"- Immediate children: {', '.join(f'`{name}`' for name in immediate_children[:16]) or 'None'}",
-                "",
-            ]
+        key_paths = ", ".join(
+            f"`{entry['relative_path']}`" for entry in _key_files(child_entries, limit=_MAX_KEY_FILES_PER_DIRECTORY)
         )
+        lines.append(
+            (
+                f"- `{relative_dir}`: {_describe_directory(relative_dir, child_entries)} "
+                f"Files=`{len(child_entries)}`. "
+                f"Languages={', '.join(f'{name} ({count})' for name, count in dominant_languages.most_common(3)) or 'None'}. "
+                f"Children={', '.join(f'`{name}`' for name in immediate_children[:8]) or 'None'}. "
+                f"Key files={key_paths or 'None'}"
+            )
+        )
+    if len(directories) > _MAX_DIRECTORY_LINES:
+        lines.extend(["", f"- Additional directories omitted from the summary: `{len(directories) - _MAX_DIRECTORY_LINES}`"])
+    lines.append("")
 
     if relationship_lines:
         lines.extend(["## Cross-file Relationships", "", *relationship_lines, ""])
 
-    lines.extend(["## File Breakdown", ""])
-    for entry in entries:
-        lines.extend(
-            [
-                f"### `{entry['relative_path']}`",
-                "",
-                f"- Type: `{entry['file_type']}`",
-                f"- Language: `{entry['language'] or 'n/a'}`",
-                f"- Size: `{entry['size']}` bytes",
-                f"- Role: {entry['summary']}",
-                f"- Objective/output: {entry['predicted_output'] or 'No concrete output inferred.'}",
-                f"- Top-level symbols: {', '.join(f'`{name}`' for name in entry['symbols']) if entry['symbols'] else 'None inferred.'}",
-                f"- Schema or fields: {', '.join(f'`{name}`' for name in entry['fields']) if entry['fields'] else 'None inferred.'}",
-                (
-                    f"- Internal references: {', '.join(f'`{name}`' for name in entry['internal_references'])}"
-                    if entry["internal_references"]
-                    else "- Internal references: None resolved."
-                ),
-                (
-                    "- Data sources: "
-                    + ", ".join("`{}`".format(item["url_or_path"]) for item in entry["data_sources"])
-                    if entry["data_sources"]
-                    else "- Data sources: None detected."
-                ),
-                (
-                    f"- Sensitive signals: {', '.join(f'`{name}`' for name in entry['sensitive_fields'])}"
-                    if entry["sensitive_fields"]
-                    else "- Sensitive signals: None inferred from preview."
-                ),
-                (
-                    f"- Preview note: {entry['preview_excerpt']}"
-                    if entry["preview_excerpt"]
-                    else "- Preview note: Binary, media, or non-text content."
-                ),
-                (
-                    "- Preview coverage: Partial preview only; larger file content was truncated for analysis."
-                    if entry["truncated"]
-                    else "- Preview coverage: Full preview captured within configured limit."
-                ),
-                "",
-            ]
-        )
+    lines.extend(["## Key Files", ""])
+    lines.extend(_format_file_highlight(entry) for entry in key_entries)
+    omitted_count = max(len(entries) - len(key_entries), 0)
+    if omitted_count:
+        lines.extend(["", f"- Additional files omitted from the summary: `{omitted_count}`"])
 
     return "\n".join(lines).strip() + "\n"
 

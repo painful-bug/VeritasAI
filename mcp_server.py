@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import sys
 import uuid
 from contextlib import suppress
@@ -20,6 +21,13 @@ except Exception:  # pragma: no cover
 
 from config_loader import load_config
 from analysis.repository_review import ensure_directory_analysis
+from graphs.checkpointer import (
+    checkpoint_backend,
+    checkpoint_sqlite_path,
+    ensure_sqlite_checkpoint_ready,
+    is_sqlite_malformed_error,
+    recover_sqlite_checkpoint,
+)
 from graphs.compliance_graph import build_compliance_graph, compile_graph
 from llm.provider_factory import resolve_provider_model
 from rag.ingestor import ingest, needs_ingestion
@@ -50,13 +58,19 @@ async def _get_async_graph():
 
     config = load_config()
     checkpoint_config = config.get("checkpoint", {})
-    backend = checkpoint_config.get("backend", "sqlite")
+    backend = checkpoint_backend(config)
 
     if backend == "sqlite":
         from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
-        sqlite_path = checkpoint_config.get("sqlite_path", ".langgraph_checkpoints.db")
-        _ASYNC_CHECKPOINTER_CONTEXT = AsyncSqliteSaver.from_conn_string(sqlite_path)
+        sqlite_path = checkpoint_sqlite_path(config)
+        backup_paths = ensure_sqlite_checkpoint_ready(config)
+        if backup_paths:
+            _stderr(
+                "Recovered malformed LangGraph checkpoint DB by backing up: "
+                + ", ".join(str(path) for path in backup_paths)
+            )
+        _ASYNC_CHECKPOINTER_CONTEXT = AsyncSqliteSaver.from_conn_string(str(sqlite_path))
         saver = await _ASYNC_CHECKPOINTER_CONTEXT.__aenter__()
         await saver.conn.execute("PRAGMA journal_mode=WAL;")
         await saver.conn.execute("PRAGMA synchronous=NORMAL;")
@@ -68,6 +82,32 @@ async def _get_async_graph():
     return _ASYNC_GRAPH
 
 
+async def _reset_async_graph() -> None:
+    global _ASYNC_GRAPH, _ASYNC_CHECKPOINTER_CONTEXT
+
+    _ASYNC_GRAPH = None
+    if _ASYNC_CHECKPOINTER_CONTEXT is not None:
+        try:
+            await _ASYNC_CHECKPOINTER_CONTEXT.__aexit__(None, None, None)
+        except Exception:
+            pass
+        _ASYNC_CHECKPOINTER_CONTEXT = None
+
+
+async def _recover_malformed_async_checkpoint(config: dict[str, Any], exc: Exception) -> bool:
+    if checkpoint_backend(config) != "sqlite" or not is_sqlite_malformed_error(exc):
+        return False
+
+    sqlite_path = checkpoint_sqlite_path(config)
+    await _reset_async_graph()
+    backup_paths = recover_sqlite_checkpoint(sqlite_path, reason=str(exc))
+    _stderr(
+        f"Recovered malformed LangGraph checkpoint DB at {sqlite_path}: "
+        + (", ".join(str(path) for path in backup_paths) if backup_paths else "no backup files found")
+    )
+    return True
+
+
 async def stream_compliance_check(
     graph,
     file_path: str,
@@ -77,8 +117,9 @@ async def stream_compliance_check(
     thread_id: str,
     line_offset: int = 0,
     reviewed_context: list[dict[str, Any]] | None = None,
+    workspace_root: str | None = None,
+    restrict_directory_analysis_to_workspace: bool = False,
 ) -> AsyncIterator[dict[str, Any]]:
-    active_graph = graph or await _get_async_graph()
     effective_config = load_config()
     provider, model = resolve_provider_model(provider, model, effective_config)
     initial_state = {
@@ -86,6 +127,8 @@ async def stream_compliance_check(
         "file_content": file_content,
         "llm_provider": provider,
         "llm_model": model,
+        "opened_workspace_root": workspace_root,
+        "restrict_directory_analysis_to_workspace": restrict_directory_analysis_to_workspace,
         "line_offset": line_offset,
         "reviewed_context": reviewed_context or [],
         "config": effective_config,
@@ -101,8 +144,19 @@ async def stream_compliance_check(
         "langsmith_run_url": None,
     }
     run_config = get_run_config(thread_id, file_path, provider, model)
-    async for event in active_graph.astream_events(initial_state, config=run_config, version="v2"):
-        yield event
+    max_attempts = 2 if graph is None and checkpoint_backend(effective_config) == "sqlite" else 1
+    for attempt in range(max_attempts):
+        active_graph = graph or await _get_async_graph()
+        try:
+            async for event in active_graph.astream_events(initial_state, config=run_config, version="v2"):
+                yield event
+            return
+        except Exception as exc:
+            if graph is not None or attempt + 1 >= max_attempts:
+                raise
+            recovered = await _recover_malformed_async_checkpoint(effective_config, exc)
+            if not recovered:
+                raise
 
 
 def build_server():
@@ -141,8 +195,10 @@ def build_server():
         file_content: str,
         line_offset: int = 0,
         reviewed_context: list[dict[str, Any]] | None = None,
-        provider: str = config.get("llm", {}).get("default_provider", "ollama_cloud"),
-        model: str = config.get("llm", {}).get("default_model", "glm4:cloud"),
+        provider: str = config.get("llm", {}).get("default_provider", "openrouter"),
+        model: str = config.get("llm", {}).get("default_model", "nvidia/nemotron-3-super-120b-a12b:free"),
+        workspace_root: str | None = None,
+        restrict_directory_analysis_to_workspace: bool = False,
         ctx: Context | None = None,
     ) -> dict[str, Any]:
         thread_id = str(uuid.uuid4())
@@ -163,6 +219,8 @@ def build_server():
                 thread_id,
                 line_offset=line_offset,
                 reviewed_context=reviewed_context,
+                workspace_root=workspace_root,
+                restrict_directory_analysis_to_workspace=restrict_directory_analysis_to_workspace,
             ):
                 kind = event.get("event")
                 name = event.get("name")

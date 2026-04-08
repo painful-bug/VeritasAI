@@ -1,27 +1,29 @@
 from __future__ import annotations
 
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {
-        "default_provider": "ollama_cloud",
-        "default_model": "glm4:cloud",
+        "default_provider": "openrouter",
+        "default_model": "nvidia/nemotron-3-super-120b-a12b:free",
         "max_retries": 3,
         "retry_backoff_jitter": True,
         "rate_limit_rps": 2,
         "rate_limit_burst": 10,
         "providers": {
             "ollama_cloud": {
-                "base_url": "https://cloud.ollama.com",
+                "base_url": "https://ollama.com",
                 "models": ["glm4:cloud", "llama3.3:cloud", "qwen2.5:cloud"],
             },
             "openrouter": {
                 "base_url": "https://openrouter.ai/api/v1",
-                "models": ["qwen/qwen3.6-plus:free"],
+                "models": ["nvidia/nemotron-3-super-120b-a12b:free"],
             },
             "groq": {
                 "models": ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"],
@@ -62,7 +64,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "directory_analysis": {
         "enabled": True,
         "filename": "DIRECTORY_ANALYSIS.md",
-        "preview_chars": 12000,
+        "preview_chars": 3000,
         "exclude_dirs": [
             ".git",
             ".hg",
@@ -146,6 +148,18 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
+def _apply_environment_overrides(config: dict[str, Any]) -> dict[str, Any]:
+    overridden = deepcopy(config)
+    llm = overridden.setdefault("llm", {})
+    provider = os.getenv("AI_ETHICS_DEFAULT_PROVIDER", "").strip()
+    model = os.getenv("AI_ETHICS_DEFAULT_MODEL", "").strip()
+    if provider:
+        llm["default_provider"] = provider
+    if model:
+        llm["default_model"] = model
+    return overridden
+
+
 def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     normalized = deepcopy(config)
 
@@ -174,24 +188,26 @@ def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     thresholds.setdefault("force_web_search_relevancy_max", 0.35)
 
     llm = normalized.setdefault("llm", {})
-    llm.setdefault("default_provider", "ollama_cloud")
-    llm.setdefault("default_model", "glm4:cloud")
+    llm.setdefault("default_provider", "openrouter")
+    llm.setdefault("default_model", "nvidia/nemotron-3-super-120b-a12b:free")
     providers = llm.setdefault("providers", {})
     for provider_name in ("ollama_cloud", "openrouter", "groq", "ollama_local"):
         providers.setdefault(provider_name, {})
-    providers["ollama_cloud"].setdefault("base_url", "https://cloud.ollama.com")
+    providers["ollama_cloud"].setdefault("base_url", "https://ollama.com")
     providers["ollama_cloud"].setdefault("models", ["glm4:cloud", "llama3.3:cloud", "qwen2.5:cloud"])
     providers["openrouter"].setdefault("base_url", "https://openrouter.ai/api/v1")
-    providers["openrouter"].setdefault("models", ["qwen/qwen3.6-plus:free"])
+    providers["openrouter"].setdefault("models", ["nvidia/nemotron-3-super-120b-a12b:free"])
     providers["groq"].setdefault("models", ["llama-3.3-70b-versatile", "mixtral-8x7b-32768", "gemma2-9b-it"])
     providers["ollama_local"].setdefault("base_url", "http://localhost:11434")
     providers["ollama_local"].setdefault("models", [])
-    default_provider = str(llm.get("default_provider", "ollama_cloud") or "ollama_cloud")
-    available_default_models = list(providers.get(default_provider, {}).get("models", []))
-    default_model = str(llm.get("default_model", "") or "").strip()
-    if available_default_models and default_model not in available_default_models:
-        llm["default_model"] = available_default_models[0]
-
+    providers["ollama_cloud"]["base_url"] = _normalize_ollama_base_url(
+        providers["ollama_cloud"].get("base_url"),
+        provider="ollama_cloud",
+    )
+    providers["ollama_local"]["base_url"] = _normalize_ollama_base_url(
+        providers["ollama_local"].get("base_url"),
+        provider="ollama_local",
+    )
     scan = normalized.setdefault("scan", {})
     scan.setdefault("output_dir", "compliance-analysis")
     scan.setdefault("max_file_size_mb", 50)
@@ -199,7 +215,7 @@ def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     directory_analysis = normalized.setdefault("directory_analysis", {})
     directory_analysis.setdefault("enabled", True)
     directory_analysis.setdefault("filename", "DIRECTORY_ANALYSIS.md")
-    directory_analysis.setdefault("preview_chars", 12000)
+    directory_analysis.setdefault("preview_chars", 3000)
     directory_analysis.setdefault(
         "exclude_dirs",
         [
@@ -250,6 +266,29 @@ def _normalize_aliases(config: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def _normalize_ollama_base_url(value: Any, *, provider: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "https://ollama.com" if provider == "ollama_cloud" else "http://localhost:11434"
+
+    parsed = urlsplit(raw)
+    if not parsed.scheme and not parsed.netloc:
+        parsed = urlsplit(f"https://{raw}" if provider == "ollama_cloud" else f"http://{raw}")
+
+    scheme = parsed.scheme or ("https" if provider == "ollama_cloud" else "http")
+    netloc = parsed.netloc or parsed.path
+    path = parsed.path if parsed.netloc else ""
+
+    if provider == "ollama_cloud" and netloc == "cloud.ollama.com":
+        netloc = "ollama.com"
+
+    trimmed_path = path.rstrip("/")
+    if trimmed_path in {"/api", "/v1"}:
+        path = ""
+
+    return urlunsplit((scheme, netloc, path, "", "")).rstrip("/")
+
+
 def _resolve_runtime_paths(config: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     resolved = deepcopy(config)
 
@@ -274,15 +313,15 @@ def load_config(path: str | Path = "config.yaml") -> dict[str, Any]:
         config_path = (_repo_root() / config_path).resolve()
 
     if not config_path.exists():
-        return _resolve_runtime_paths(_normalize_aliases(DEFAULT_CONFIG), _repo_root())
+        return _resolve_runtime_paths(_normalize_aliases(_apply_environment_overrides(DEFAULT_CONFIG)), _repo_root())
 
     with config_path.open("r", encoding="utf-8") as handle:
         raw = yaml.safe_load(handle) or {}
 
     if not isinstance(raw, dict):
-        return _resolve_runtime_paths(_normalize_aliases(DEFAULT_CONFIG), config_path.parent)
+        return _resolve_runtime_paths(_normalize_aliases(_apply_environment_overrides(DEFAULT_CONFIG)), config_path.parent)
 
-    merged = _deep_merge(DEFAULT_CONFIG, raw)
+    merged = _apply_environment_overrides(_deep_merge(DEFAULT_CONFIG, raw))
     return _resolve_runtime_paths(_normalize_aliases(merged), config_path.parent)
 
 

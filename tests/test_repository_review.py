@@ -31,8 +31,11 @@ def run():
     assert result["updated"] is True
     assert analysis_path.exists()
     assert "Repository Overview" in result["content"]
+    assert "Key Files" in result["content"]
     assert "src/main.py" in result["content"]
     assert "data/records.csv" in result["content"]
+    assert "Preview note" not in result["content"]
+    assert "File Breakdown" not in result["content"]
     assert ".venv" not in result["content"]
     assert ".env" not in result["content"]
     assert "settings.toml" not in result["content"]
